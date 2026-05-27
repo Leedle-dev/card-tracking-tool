@@ -9,6 +9,9 @@ data/card_images/**
 !data/card_images/**/
 !data/card_images/**/.gitkeep
 
+# Raw fetched website/debug output
+data/raw_fetches/
+
 # OS/editor noise
 .DS_Store
 Thumbs.db
