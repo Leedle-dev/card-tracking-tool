@@ -1,1 +1,55 @@
-Initial README
+Card Tracking Tool
+
+Project Brief
+
+The Card Tracking Tool is a local-first application for managing, pricing, and evaluating cards intended for resale. The initial focus is Simplified Chinese Pokemon cards, with support for tracking equivalent English, Japanese, and other language prints where applicable.
+
+The long-term goal is to combine inventory tracking, marketplace pricing, image-based card matching, graded card value tracking, and grading expected value calculations into one workflow.
+
+Core Goals
+
+- Maintain a searchable database of cards planned for sale.
+- Track raw and graded pricing from sources such as eBay, TCGplayer, CardTrader, and other marketplaces.
+- Support image search and visual matching to identify equivalent cards across languages and regions.
+- Distinguish normal multilingual equivalents from Chinese-exclusive cards.
+- Record graded card prices by grading company and grade.
+- Calculate whether grading a card is likely worthwhile compared with selling it raw.
+
+Version 1 Roadmap
+
+1. Local Inventory Database
+   - Add, edit, delete, and search cards.
+   - Track card name, set, card number, language, condition, quantity, cost basis, and notes.
+   - Store card images locally.
+
+2. Manual Pricing Records
+   - Record raw card prices manually by marketplace/source.
+   - Track date checked, listing type, price, shipping, and notes.
+   - Support multiple price records per card.
+
+3. Graded Pricing Records
+   - Record graded card sale/listing prices.
+   - Track grading company, grade, source, sale price, and date.
+
+4. Grading Expected Value Calculator
+   - Compare raw sale value against expected graded value.
+   - Include grading fees, shipping, marketplace fees, and expected grade probabilities.
+   - Show estimated EV and whether grading appears favorable.
+
+5. Basic Reporting
+   - Show inventory count and estimated value.
+   - Highlight cards that may be good grading candidates.
+   - Identify cards with stale or missing pricing data.
+
+Later Phases
+
+- Automated marketplace lookup for Buy It Now listings and sold comps.
+- Image-based matching across card languages and regional prints.
+- Cross-language card identity mapping.
+- CSV or spreadsheet import/export.
+- Pricing refresh jobs and historical price charts.
+- Sale priority recommendations based on margin, demand, and grading EV.
+
+Development Notes
+
+This repository starts as a local workspace for planning and building the tool. The preferred first implementation should be easy to run on Windows, use a local database, and keep the earliest version focused on reliable manual workflows before adding marketplace automation.
