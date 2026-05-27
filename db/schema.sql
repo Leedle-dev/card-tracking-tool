@@ -134,9 +134,14 @@ CREATE TABLE IF NOT EXISTS grading_ev_runs (
 
 CREATE INDEX IF NOT EXISTS idx_cards_search ON cards(name, set_name, card_number, language);
 CREATE INDEX IF NOT EXISTS idx_cards_sale_status ON cards(sale_status);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_cards_set_number_language
+ON cards(set_code, card_number, language);
+
 CREATE INDEX IF NOT EXISTS idx_raw_price_card_checked ON raw_price_records(card_id, checked_at);
 CREATE INDEX IF NOT EXISTS idx_graded_price_card_grade ON graded_price_records(card_id, grading_company, grade);
 CREATE INDEX IF NOT EXISTS idx_ev_runs_card ON grading_ev_runs(card_id, calculated_at);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_card_images_card_path_role
+ON card_images(card_id, image_path, image_role);
 
 CREATE TRIGGER IF NOT EXISTS trg_cards_updated_at
 AFTER UPDATE ON cards

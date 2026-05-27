@@ -20,6 +20,14 @@ def main() -> None:
         profiles = conn.execute(
             "SELECT name, grading_company FROM grading_profiles ORDER BY name"
         ).fetchall()
+        card_counts = conn.execute(
+            """
+            SELECT set_code, set_name, language, COUNT(*)
+            FROM cards
+            GROUP BY set_code, set_name, language
+            ORDER BY set_code, language
+            """
+        ).fetchall()
 
     print("Tables:")
     for (name,) in tables:
@@ -32,6 +40,12 @@ def main() -> None:
     print("\nGrading profiles:")
     for name, company in profiles:
         print(f"- {name} ({company})")
+
+    print("\nCard counts:")
+    if not card_counts:
+        print("- No cards imported yet")
+    for set_code, set_name, language, count in card_counts:
+        print(f"- {set_code} | {set_name} | {language}: {count}")
 
 
 if __name__ == "__main__":

@@ -80,3 +80,11 @@ Initial database coverage:
 - Grading fee profiles.
 - Grading EV assumptions.
 - Saved grading EV calculation runs.
+
+Example Data
+
+Gem Pack Vol. 5 can be imported from the PokiPair set list as starter reference data:
+
+C:\Users\Lee\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe scripts\import_gem_pack_vol5.py
+
+This importer creates Simplified Chinese Pokemon card reference rows for set code CBB5C and attaches the source image URL for each numbered card image found on the PokiPair page. The imported names are placeholders in the format "Gem Pack Vol. 5 #001" until manual naming, OCR, or another card identity source is added.
