@@ -60,6 +60,24 @@ CREATE TABLE IF NOT EXISTS marketplace_sources (
     notes TEXT
 );
 
+CREATE TABLE IF NOT EXISTS set_catalog (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_name TEXT NOT NULL DEFAULT 'TCGcollector',
+    source_region TEXT NOT NULL,
+    tcgcollector_set_id INTEGER NOT NULL,
+    set_name TEXT NOT NULL,
+    set_code TEXT,
+    release_date_text TEXT,
+    card_count INTEGER,
+    set_url TEXT NOT NULL,
+    slug TEXT,
+    source_catalog_url TEXT,
+    last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (source_name, source_region, tcgcollector_set_id)
+);
+
 CREATE TABLE IF NOT EXISTS raw_price_records (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     card_id INTEGER NOT NULL,
@@ -142,6 +160,8 @@ CREATE INDEX IF NOT EXISTS idx_cards_search ON cards(name, set_name, card_number
 CREATE INDEX IF NOT EXISTS idx_cards_sale_status ON cards(sale_status);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_cards_set_number_language
 ON cards(set_code, card_number, language);
+CREATE INDEX IF NOT EXISTS idx_set_catalog_lookup
+ON set_catalog(source_region, set_name, set_code);
 
 CREATE INDEX IF NOT EXISTS idx_raw_price_card_checked ON raw_price_records(card_id, checked_at);
 CREATE INDEX IF NOT EXISTS idx_graded_price_card_grade ON graded_price_records(card_id, grading_company, grade);
@@ -154,4 +174,11 @@ AFTER UPDATE ON cards
 FOR EACH ROW
 BEGIN
     UPDATE cards SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_set_catalog_updated_at
+AFTER UPDATE ON set_catalog
+FOR EACH ROW
+BEGIN
+    UPDATE set_catalog SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
 END;

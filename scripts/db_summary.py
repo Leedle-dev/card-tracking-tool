@@ -38,6 +38,14 @@ def main() -> None:
             ORDER BY c.set_code, c.language
             """
         ).fetchall()
+        set_catalog_counts = conn.execute(
+            """
+            SELECT source_region, COUNT(*)
+            FROM set_catalog
+            GROUP BY source_region
+            ORDER BY source_region
+            """
+        ).fetchall()
 
     print("Tables:")
     for (name,) in tables:
@@ -62,6 +70,12 @@ def main() -> None:
         print("- No local image paths recorded yet")
     for set_code, language, count in image_counts:
         print(f"- {set_code} | {language}: {count}")
+
+    print("\nSet catalog counts:")
+    if not set_catalog_counts:
+        print("- No set catalog rows imported yet")
+    for source_region, count in set_catalog_counts:
+        print(f"- {source_region}: {count}")
 
 
 if __name__ == "__main__":

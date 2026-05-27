@@ -100,3 +100,7 @@ To fetch TCGcollector set catalogs for International, Japanese, and Simplified C
 C:\Users\Lee\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe scripts\fetch_tcgcollector_sets.py
 
 This writes ignored TSV review files to data/raw_fetches/, including tcgcollector_sets_all.tsv. The set catalog TSV includes source region, TCGcollector set ID, set name, set code, release date text, card count, set URL, and slug.
+
+To load the fetched TCGcollector set catalog into SQLite:
+
+C:\Users\Lee\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe scripts\import_tcgcollector_set_catalog.py
