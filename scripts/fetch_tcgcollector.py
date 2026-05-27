@@ -21,11 +21,14 @@ CARD_TILE_RE = re.compile(
 )
 CARD_NAME_RE = re.compile(r'title="(?P<full_name>[^"]+)"')
 CARD_SLUG_RE = re.compile(r'href="/cards/\d+/(?P<slug>[^"]+)"')
+CARD_NUMBER_OVERLAY_RE = re.compile(
+    r'<div class="card-image-grid-item-info-overlay-number">\s*'
+    r'(?P<card_number>[^<]+?)\s*</div>'
+)
 RARITY_RE = re.compile(
     r'alt="(?P<rarity>[^"]+)"[^>]+'
     r'class="card-rarity-symbol card-image-grid-item-info-overlay-rarity-symbol"'
 )
-CARD_NUMBER_RE = re.compile(r"(?P<card_number>\d{4}/07)\)")
 
 
 def fetch(url: str) -> tuple[int | None, dict[str, str], bytes]:
@@ -61,8 +64,12 @@ def extract_cards(text: str) -> list[dict[str, str]]:
             continue
 
         full_name = html.unescape(name_match.group("full_name"))
-        card_number_match = CARD_NUMBER_RE.search(full_name)
-        card_number = card_number_match.group("card_number") if card_number_match else ""
+        card_number_match = CARD_NUMBER_OVERLAY_RE.search(card_html)
+        card_number = (
+            html.unescape(card_number_match.group("card_number")).strip()
+            if card_number_match
+            else ""
+        )
         name = full_name.split(" (", 1)[0]
         card_id = match.group("card_id")
         cards_by_id[card_id] = {

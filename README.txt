@@ -85,9 +85,9 @@ Example Data
 
 Gem Pack Vol. 5 can be imported from the PokiPair set list as starter reference data:
 
-C:\Users\Lee\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe scripts\import_gem_pack_vol5.py
+C:\Users\Lee\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe scripts\import_gem_pack_vol5.py --language s-chinese --set-name "Gem Pack Vol. 5"
 
-This importer rebuilds Simplified Chinese Pokemon card reference rows for set code CBB5C, downloads each numbered card image into data/card_images/s-chinese/2026-04-24-CBB5C-Gem-Pack-Vol-5/, and stores the local image path in SQLite. The original PokiPair image URL is retained as source metadata.
+This importer resolves the requested language and set name from the local set_catalog table, fetches the TCGcollector set page, rebuilds the card rows, downloads card images into data/card_images/, and stores the local image path in SQLite. The original TCGcollector image URL and card page URL are retained as source metadata.
 
 Gem Pack Vol. 5 card numbers are stored in the format "0101/07". The first two digits identify the Pokemon, the third digit is currently always 0, and the fourth digit identifies the variant/holo pattern. Downloaded image files are renamed to match the card number, such as 0101-07.png.
 

@@ -13,6 +13,8 @@ CREATE TABLE IF NOT EXISTS cards (
     rarity TEXT,
     holo_pattern TEXT,
     source_sequence INTEGER,
+    tcgcollector_card_id INTEGER,
+    card_detail_url TEXT,
     language TEXT NOT NULL DEFAULT 'Simplified Chinese',
     region TEXT,
     release_year INTEGER,

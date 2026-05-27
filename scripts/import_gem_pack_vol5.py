@@ -1,89 +1,113 @@
+from datetime import datetime
 from pathlib import Path
-import hashlib
-import re
-import sqlite3
+from urllib.error import HTTPError, URLError
+from urllib.parse import urljoin, urlparse
 from urllib.request import Request, urlopen
+import argparse
+import html
+import re
+import shutil
+import sqlite3
 
 
 ROOT = Path(__file__).resolve().parents[1]
 DB_PATH = ROOT / "data" / "card_tracker.sqlite"
-SOURCE_URL = "https://www.pokipair.com/gem-pack-vol-5-card-list/"
-IMAGE_DIR = (
-    ROOT
-    / "data"
-    / "card_images"
-    / "s-chinese"
-    / "2026-04-24-CBB5C-Gem-Pack-Vol-5"
-)
+BASE_URL = "https://www.tcgcollector.com"
 
-SET_NAME = "Gem Pack Vol. 5"
-SET_CODE = "CBB5C"
-LANGUAGE = "Simplified Chinese"
-REGION = "Mainland China"
-RELEASE_YEAR = 2026
-RELEASE_DATE = "2026-04-24"
-RARITY_NOTE = "Includes Gem Rare, noted by PokiPair as exclusive to Simplified Chinese Pokemon."
-
-POKEMON_NAMES = [
-    "Captain Pikachu",
-    "Hisuian Growlithe",
-    "Magneton",
-    "Chansey",
-    "Horsea",
-    "Sunflora",
-    "Skarmory",
-    "Houndoom",
-    "Phanpy",
-    "Vibrava",
-    "Chimecho",
-    "Spheal",
-    "Latios",
-    "Timburr",
-    "Joltik",
-    "Stunfisk",
-    "Braviary",
-    "Vivillon",
-    "Raboot",
-    "Applin",
-    "Milcery",
-    "Floragato",
-    "Crocalor",
-    "Quaxwell",
-    "Ceruledge",
-    "Wattrel",
-    "Cetitan",
-    "Tatsugiri",
-]
-
-VARIANTS = {
-    "01": ("Common", "Energy Holo"),
-    "02": ("Uncommon", "Poke Ball Holo"),
-    "03": ("Uncommon", "Star Holo"),
-    "04": ("Uncommon", "Windmill Holo"),
-    "05": ("Rare", "Master Ball Holo"),
-    "06": ("Double Rare", "Stamped Holo"),
-    "07": ("Triple Rare", "Illustration Art Holo"),
+REGION_ALIASES = {
+    "english": "international",
+    "international": "international",
+    "intl": "international",
+    "japanese": "japanese",
+    "jp": "japanese",
+    "s-chinese": "s-chinese",
+    "simplified chinese": "s-chinese",
+    "simplified-chinese": "s-chinese",
+    "chinese": "s-chinese",
+    "cn": "s-chinese",
 }
 
-IMAGE_RE = re.compile(
-    r"https://media\.pokipair\.com/[^\" ]*"
-    r"Gem-Pack-Vol-5-Simplified-Chinese-Pokemon-Set-List-PokiPair-Ireland-(\d{3})\.png"
+LANGUAGE_BY_REGION = {
+    "international": "English",
+    "japanese": "Japanese",
+    "s-chinese": "Simplified Chinese",
+}
+
+CARD_TILE_RE = re.compile(
+    r'<div\s+class="(?=[^"]*card-image-grid-item)[^"]*"'
+    r'[\s\S]*?data-card-id="(?P<card_id>\d+)"'
+    r'[\s\S]*?</a>',
+    re.MULTILINE,
 )
+CARD_NAME_RE = re.compile(r'title="(?P<full_name>[^"]+)"')
+CARD_DETAIL_RE = re.compile(r'href="(?P<detail_path>/cards/\d+/[^"]+)"')
+CARD_SLUG_RE = re.compile(r'href="/cards/\d+/(?P<slug>[^"]+)"')
+CARD_IMAGE_RE = re.compile(
+    r'<img[\s\S]*?src="(?P<src>[^"]+)"[\s\S]*?'
+    r'class="card-image-grid-item-image"'
+)
+CARD_IMAGE_SRCSET_RE = re.compile(
+    r'<img[\s\S]*?srcset="(?P<srcset>[^"]+)"[\s\S]*?'
+    r'class="card-image-grid-item-image"'
+)
+CARD_NUMBER_RE = re.compile(
+    r'<div class="card-image-grid-item-info-overlay-number">\s*'
+    r'(?P<card_number>[^<]+?)\s*</div>'
+)
+RARITY_RE = re.compile(
+    r'alt="(?P<rarity>[^"]+)"[^>]+'
+    r'class="card-rarity-symbol card-image-grid-item-info-overlay-rarity-symbol"'
+)
+
+
+def normalize_region(language: str) -> str:
+    key = language.strip().lower()
+    if key not in REGION_ALIASES:
+        valid = ", ".join(sorted(REGION_ALIASES))
+        raise SystemExit(f"Unknown language/region '{language}'. Valid values: {valid}")
+    return REGION_ALIASES[key]
+
+
+def slugify(value: str) -> str:
+    value = re.sub(r"[^A-Za-z0-9]+", "-", value.strip())
+    return value.strip("-") or "unknown"
+
+
+def release_date_slug(release_date_text: str | None) -> str:
+    if not release_date_text:
+        return "unknown-date"
+    try:
+        return datetime.strptime(release_date_text, "%b %d, %Y").strftime("%Y-%m-%d")
+    except ValueError:
+        return slugify(release_date_text).lower()
+
+
+def image_extension(url: str) -> str:
+    suffix = Path(urlparse(url).path).suffix.lower()
+    return suffix if suffix else ".webp"
 
 
 def fetch_url_bytes(url: str) -> bytes:
     request = Request(
         url,
         headers={
-            "User-Agent": "card-tracking-tool/0.1 (+local inventory research)"
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/125.0 Safari/537.36"
+            ),
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
         },
     )
-    with urlopen(request, timeout=30) as response:
-        return response.read()
-
-
-def fetch_source_html() -> str:
-    return fetch_url_bytes(SOURCE_URL).decode("utf-8", errors="replace")
+    try:
+        with urlopen(request, timeout=30) as response:
+            return response.read()
+    except HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        raise SystemExit(f"Request failed for {url}: HTTP {exc.code}\n{body[:500]}") from exc
+    except URLError as exc:
+        raise SystemExit(f"Request failed for {url}: {exc}") from exc
 
 
 def ensure_schema_columns(conn: sqlite3.Connection) -> None:
@@ -97,6 +121,8 @@ def ensure_schema_columns(conn: sqlite3.Connection) -> None:
         "variant_code": "TEXT",
         "holo_pattern": "TEXT",
         "source_sequence": "INTEGER",
+        "tcgcollector_card_id": "INTEGER",
+        "card_detail_url": "TEXT",
     }
     for column, column_type in card_columns_to_add.items():
         if column not in card_columns:
@@ -110,118 +136,215 @@ def ensure_schema_columns(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE card_images ADD COLUMN source_url TEXT")
 
 
-def extract_source_images(html: str) -> list[tuple[int, str]]:
-    found = {}
-    for match in IMAGE_RE.finditer(html):
-        source_sequence = int(match.group(1))
-        image_url = match.group(0)
-        found[source_sequence] = image_url
-
-    return sorted(found.items(), key=lambda item: item[0])
-
-
-def build_card_identities() -> list[dict[str, object]]:
-    identities = []
-    for pokemon_index, pokemon_name in enumerate(POKEMON_NAMES, start=1):
-        for variant_number in range(1, 8):
-            variant_code = f"{variant_number:02d}"
-            rarity, holo_pattern = VARIANTS[variant_code]
-            set_number = f"{pokemon_index:02d}0{variant_number}"
-            identities.append(
-                {
-                    "pokemon_name": pokemon_name,
-                    "pokemon_index": pokemon_index,
-                    "variant_code": variant_code,
-                    "card_number": f"{set_number}/07",
-                    "image_stem": f"{set_number}-07",
-                    "rarity": rarity,
-                    "holo_pattern": holo_pattern,
-                }
-            )
-    return identities
-
-
-def reset_existing_import(conn: sqlite3.Connection) -> int:
-    card_ids = [
-        row[0]
-        for row in conn.execute(
+def resolve_set(conn: sqlite3.Connection, region: str, set_name: str) -> dict[str, object]:
+    exact_rows = conn.execute(
+        """
+        SELECT
+            source_region,
+            tcgcollector_set_id,
+            set_name,
+            set_code,
+            release_date_text,
+            card_count,
+            set_url,
+            slug
+        FROM set_catalog
+        WHERE source_region = ? AND lower(set_name) = lower(?)
+        ORDER BY release_date_text DESC
+        """,
+        (region, set_name),
+    ).fetchall()
+    rows = exact_rows
+    if not rows:
+        rows = conn.execute(
             """
-            SELECT id
-            FROM cards
-            WHERE set_code = ? AND language = ?
+            SELECT
+                source_region,
+                tcgcollector_set_id,
+                set_name,
+                set_code,
+                release_date_text,
+                card_count,
+                set_url,
+                slug
+            FROM set_catalog
+            WHERE source_region = ? AND lower(set_name) LIKE lower(?)
+            ORDER BY release_date_text DESC
             """,
-            (SET_CODE, LANGUAGE),
+            (region, f"%{set_name}%"),
         ).fetchall()
-    ]
+
+    if not rows:
+        raise SystemExit(
+            f"No set catalog match for region '{region}' and set name '{set_name}'. "
+            "Run scripts/fetch_tcgcollector_sets.py and "
+            "scripts/import_tcgcollector_set_catalog.py if the catalog is stale."
+        )
+    if len(rows) > 1 and not exact_rows:
+        matches = "\n".join(f"- {row[2]} ({row[3]})" for row in rows[:20])
+        raise SystemExit(
+            f"Multiple set matches for '{set_name}'. Use a more exact name:\n{matches}"
+        )
+
+    row = rows[0]
+    return {
+        "source_region": row[0],
+        "tcgcollector_set_id": row[1],
+        "set_name": row[2],
+        "set_code": row[3],
+        "release_date_text": row[4],
+        "card_count": row[5],
+        "set_url": row[6],
+        "slug": row[7],
+    }
+
+
+def best_srcset_url(srcset: str) -> str:
+    candidates = []
+    for item in srcset.split(","):
+        parts = item.strip().split()
+        if not parts:
+            continue
+        url = parts[0]
+        width = 0
+        if len(parts) > 1 and parts[1].endswith("w"):
+            try:
+                width = int(parts[1][:-1])
+            except ValueError:
+                width = 0
+        candidates.append((width, url))
+    if not candidates:
+        return ""
+    return max(candidates, key=lambda candidate: candidate[0])[1]
+
+
+def extract_cards(set_html: str) -> list[dict[str, object]]:
+    cards_by_id = {}
+    for index, match in enumerate(CARD_TILE_RE.finditer(set_html), start=1):
+        card_html = match.group(0)
+        name_match = CARD_NAME_RE.search(card_html)
+        detail_match = CARD_DETAIL_RE.search(card_html)
+        slug_match = CARD_SLUG_RE.search(card_html)
+        image_match = CARD_IMAGE_RE.search(card_html)
+        srcset_match = CARD_IMAGE_SRCSET_RE.search(card_html)
+        number_match = CARD_NUMBER_RE.search(card_html)
+        rarity_match = RARITY_RE.search(card_html)
+        if not name_match or not detail_match or not image_match or not number_match:
+            continue
+
+        image_url = ""
+        if srcset_match:
+            image_url = best_srcset_url(html.unescape(srcset_match.group("srcset")))
+        if not image_url:
+            image_url = html.unescape(image_match.group("src"))
+
+        full_name = html.unescape(name_match.group("full_name")).strip()
+        card_id = int(match.group("card_id"))
+        cards_by_id[card_id] = {
+            "source_sequence": index,
+            "tcgcollector_card_id": card_id,
+            "name": full_name.split(" (", 1)[0],
+            "card_number": html.unescape(number_match.group("card_number")).strip(),
+            "rarity": html.unescape(rarity_match.group("rarity")).strip() if rarity_match else None,
+            "full_name": full_name,
+            "slug": slug_match.group("slug") if slug_match else "",
+            "card_detail_url": urljoin(BASE_URL, detail_match.group("detail_path")),
+            "source_image_url": image_url,
+        }
+
+    return sorted(
+        cards_by_id.values(),
+        key=lambda card: (str(card["card_number"]), int(card["tcgcollector_card_id"])),
+    )
+
+
+def image_dir_for_set(set_row: dict[str, object], region: str) -> Path:
+    date_part = release_date_slug(set_row.get("release_date_text"))
+    code_part = slugify(str(set_row.get("set_code") or "NO-CODE"))
+    name_part = slugify(str(set_row["set_name"]))
+    return ROOT / "data" / "card_images" / region / f"{date_part}-{code_part}-{name_part}"
+
+
+def clear_existing_local_images(image_dir: Path) -> int:
+    if not image_dir.exists():
+        image_dir.mkdir(parents=True, exist_ok=True)
+        return 0
+
+    removed = 0
+    for path in image_dir.iterdir():
+        if path.name == ".gitkeep":
+            continue
+        if path.is_file():
+            path.unlink()
+            removed += 1
+        elif path.is_dir():
+            shutil.rmtree(path)
+            removed += 1
+    return removed
+
+
+def reset_existing_import(
+    conn: sqlite3.Connection,
+    set_code: str | None,
+    set_name: str,
+    language: str,
+) -> int:
+    rows = conn.execute(
+        """
+        SELECT id
+        FROM cards
+        WHERE language = ?
+          AND (
+            (set_code IS NOT NULL AND set_code = ?)
+            OR set_name = ?
+          )
+        """,
+        (language, set_code, set_name),
+    ).fetchall()
     conn.execute(
         """
         DELETE FROM cards
-        WHERE set_code = ? AND language = ?
+        WHERE language = ?
+          AND (
+            (set_code IS NOT NULL AND set_code = ?)
+            OR set_name = ?
+          )
         """,
-        (SET_CODE, LANGUAGE),
+        (language, set_code, set_name),
     )
-    return len(card_ids)
-
-
-def clear_existing_local_images() -> int:
-    IMAGE_DIR.mkdir(parents=True, exist_ok=True)
-    removed = 0
-    for path in IMAGE_DIR.glob("*.png"):
-        path.unlink()
-        removed += 1
-    return removed
+    return len(rows)
 
 
 def project_relative_path(path: Path) -> str:
     return path.relative_to(ROOT).as_posix()
 
 
-def download_unique_images(source_images: list[tuple[int, str]]) -> list[dict[str, object]]:
-    downloaded = []
-    seen_hashes: dict[str, int] = {}
-    duplicate_sources = []
-
-    for source_sequence, image_url in source_images:
-        image_bytes = fetch_url_bytes(image_url)
-        image_hash = hashlib.sha256(image_bytes).hexdigest()
-        if image_hash in seen_hashes:
-            duplicate_sources.append((source_sequence, seen_hashes[image_hash]))
-            continue
-
-        seen_hashes[image_hash] = source_sequence
-        downloaded.append(
-            {
-                "source_sequence": source_sequence,
-                "source_url": image_url,
-                "image_hash": image_hash,
-                "image_bytes": image_bytes,
-            }
-        )
-
-    if duplicate_sources:
-        duplicate_text = ", ".join(
-            f"{duplicate} duplicates {original}"
-            for duplicate, original in duplicate_sources
-        )
-        print(f"Skipped duplicate source images: {duplicate_text}")
-
-    return downloaded
-
-
-def insert_card(
+def import_card(
     conn: sqlite3.Connection,
-    identity: dict[str, object],
-    image_record: dict[str, object],
-) -> int:
-    image_path = IMAGE_DIR / f"{identity['image_stem']}.png"
-    image_path.write_bytes(image_record["image_bytes"])
+    set_row: dict[str, object],
+    card: dict[str, object],
+    image_dir: Path,
+    language: str,
+    region: str,
+) -> None:
+    source_image_url = str(card["source_image_url"])
+    image_bytes = fetch_url_bytes(source_image_url)
+    image_filename = f"{slugify(str(card['card_number']).replace('/', '-'))}{image_extension(source_image_url)}"
+    image_path = image_dir / image_filename
+    image_path.write_bytes(image_bytes)
     relative_image_path = project_relative_path(image_path)
 
+    release_year = None
+    release_date_text = set_row.get("release_date_text")
+    if release_date_text:
+        try:
+            release_year = datetime.strptime(str(release_date_text), "%b %d, %Y").year
+        except ValueError:
+            release_year = None
+
     notes = (
-        f"Seeded from PokiPair set list: {SOURCE_URL}\n"
-        f"Release date: {RELEASE_DATE}\n"
-        f"{RARITY_NOTE}\n"
-        f"Source image sequence: {image_record['source_sequence']}"
+        f"Imported from TCGcollector set page: {set_row['set_url']}\n"
+        f"TCGcollector card page: {card['card_detail_url']}"
     )
 
     conn.execute(
@@ -233,11 +356,10 @@ def insert_card(
             set_code,
             card_number,
             pokemon_name,
-            pokemon_index,
-            variant_code,
             rarity,
-            holo_pattern,
             source_sequence,
+            tcgcollector_card_id,
+            card_detail_url,
             language,
             region,
             release_year,
@@ -245,22 +367,21 @@ def insert_card(
             notes,
             primary_image_path
         )
-        VALUES (?, 'Pokemon', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'reference', ?, ?)
+        VALUES (?, 'Pokemon', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'reference', ?, ?)
         """,
         (
-            identity["pokemon_name"],
-            SET_NAME,
-            SET_CODE,
-            identity["card_number"],
-            identity["pokemon_name"],
-            identity["pokemon_index"],
-            identity["variant_code"],
-            identity["rarity"],
-            identity["holo_pattern"],
-            image_record["source_sequence"],
-            LANGUAGE,
-            REGION,
-            RELEASE_YEAR,
+            card["name"],
+            set_row["set_name"],
+            set_row.get("set_code"),
+            card["card_number"],
+            card["name"],
+            card.get("rarity"),
+            card["source_sequence"],
+            card["tcgcollector_card_id"],
+            card["card_detail_url"],
+            language,
+            region,
+            release_year,
             notes,
             relative_image_path,
         ),
@@ -272,60 +393,74 @@ def insert_card(
         FROM cards
         WHERE set_code = ? AND card_number = ? AND language = ?
         """,
-        (SET_CODE, identity["card_number"], LANGUAGE),
+        (set_row.get("set_code"), card["card_number"], language),
     ).fetchone()[0]
 
     conn.execute(
         """
         INSERT INTO card_images (card_id, image_path, source_url, image_role, notes)
-        VALUES (?, ?, ?, 'source_reference', ?)
+        VALUES (?, ?, ?, 'tcgcollector_card_image', ?)
         """,
         (
             card_id,
             relative_image_path,
-            image_record["source_url"],
-            f"Downloaded from PokiPair set list: {SOURCE_URL}",
+            source_image_url,
+            f"Downloaded from {card['card_detail_url']}",
         ),
     )
 
-    return card_id
-
 
 def main() -> None:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Import a Pokemon card set from TCGcollector using a language/region "
+            "and set name resolved from the local set_catalog table."
+        )
+    )
+    parser.add_argument("--language", default="s-chinese")
+    parser.add_argument("--set-name", default="Gem Pack Vol. 5")
+    args = parser.parse_args()
+
     if not DB_PATH.exists():
-        raise SystemExit(
-            f"Database not found: {DB_PATH}. Run scripts/init_db.py first."
-        )
+        raise SystemExit(f"Database not found: {DB_PATH}. Run scripts/init_db.py first.")
 
-    html = fetch_source_html()
-    source_images = extract_source_images(html)
-    if not source_images:
-        raise SystemExit("No Gem Pack Vol. 5 card images found in source page.")
-
-    identities = build_card_identities()
-    if len(identities) != 196:
-        raise SystemExit(f"Expected 196 card identities, got {len(identities)}.")
-
-    downloaded = download_unique_images(source_images)
-    if len(downloaded) != len(identities):
-        raise SystemExit(
-            f"Expected {len(identities)} unique images, got {len(downloaded)}."
-        )
+    region = normalize_region(args.language)
+    language = LANGUAGE_BY_REGION[region]
 
     with sqlite3.connect(DB_PATH) as conn:
         conn.execute("PRAGMA foreign_keys = ON")
         ensure_schema_columns(conn)
-        removed_rows = reset_existing_import(conn)
-        removed_images = clear_existing_local_images()
+        set_row = resolve_set(conn, region, args.set_name)
 
-        for identity, image_record in zip(identities, downloaded):
-            insert_card(conn, identity, image_record)
+    set_html = fetch_url_bytes(str(set_row["set_url"])).decode("utf-8", errors="replace")
+    cards = extract_cards(set_html)
+    if not cards:
+        raise SystemExit(f"No cards parsed from {set_row['set_url']}")
+
+    expected_count = set_row.get("card_count")
+    if expected_count and len(cards) != expected_count:
+        print(f"Warning: catalog count is {expected_count}, parsed {len(cards)} cards.")
+
+    image_dir = image_dir_for_set(set_row, region)
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("PRAGMA foreign_keys = ON")
+        ensure_schema_columns(conn)
+        removed_rows = reset_existing_import(
+            conn,
+            set_row.get("set_code"),
+            str(set_row["set_name"]),
+            language,
+        )
+        removed_images = clear_existing_local_images(image_dir)
+
+        for card in cards:
+            import_card(conn, set_row, card, image_dir, language, region)
 
     print(
-        f"Rebuilt {len(identities)} {SET_NAME} card references in {DB_PATH}\n"
-        f"Read {len(source_images)} source images and kept {len(downloaded)} unique images.\n"
-        f"Deleted {removed_rows} old database rows and {removed_images} old local images.\n"
-        f"Images saved to {IMAGE_DIR}"
+        f"Imported {len(cards)} cards for {language} {set_row['set_name']} "
+        f"({set_row.get('set_code')}) into {DB_PATH}\n"
+        f"Deleted {removed_rows} old database rows and {removed_images} old local image files.\n"
+        f"Images saved to {image_dir}"
     )
 
 
