@@ -4,7 +4,10 @@ data/*.sqlite-shm
 data/*.sqlite-wal
 
 # Local card image storage
-data/images/
+data/card_images/**
+!data/card_images/
+!data/card_images/**/
+!data/card_images/**/.gitkeep
 
 # OS/editor noise
 .DS_Store
