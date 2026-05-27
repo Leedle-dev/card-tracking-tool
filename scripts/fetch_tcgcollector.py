@@ -13,11 +13,17 @@ DEFAULT_URL = (
 )
 DEFAULT_OUTPUT = ROOT / "data" / "raw_fetches" / "tcgcollector_gem_pack_vol5.html"
 
-CARD_RE = re.compile(
-    r'data-card-id="(?P<card_id>\d+)"[\s\S]{0,1500}?'
-    r'data-full-card-name-without-tcg-region="(?P<full_name>[^"]+)"[\s\S]{0,500}?'
-    r'data-card-slug="(?P<slug>[^"]+)"',
+CARD_TILE_RE = re.compile(
+    r'<div\s+class="(?=[^"]*card-image-grid-item)[^"]*"'
+    r'[\s\S]*?data-card-id="(?P<card_id>\d+)"'
+    r'[\s\S]*?</a>',
     re.MULTILINE,
+)
+CARD_NAME_RE = re.compile(r'title="(?P<full_name>[^"]+)"')
+CARD_SLUG_RE = re.compile(r'href="/cards/\d+/(?P<slug>[^"]+)"')
+RARITY_RE = re.compile(
+    r'alt="(?P<rarity>[^"]+)"[^>]+'
+    r'class="card-rarity-symbol card-image-grid-item-info-overlay-rarity-symbol"'
 )
 CARD_NUMBER_RE = re.compile(r"(?P<card_number>\d{4}/07)\)")
 
@@ -46,8 +52,15 @@ def fetch(url: str) -> tuple[int | None, dict[str, str], bytes]:
 
 def extract_cards(text: str) -> list[dict[str, str]]:
     cards_by_id = {}
-    for match in CARD_RE.finditer(text):
-        full_name = html.unescape(match.group("full_name"))
+    for match in CARD_TILE_RE.finditer(text):
+        card_html = match.group(0)
+        name_match = CARD_NAME_RE.search(card_html)
+        slug_match = CARD_SLUG_RE.search(card_html)
+        rarity_match = RARITY_RE.search(card_html)
+        if not name_match or not slug_match:
+            continue
+
+        full_name = html.unescape(name_match.group("full_name"))
         card_number_match = CARD_NUMBER_RE.search(full_name)
         card_number = card_number_match.group("card_number") if card_number_match else ""
         name = full_name.split(" (", 1)[0]
@@ -56,8 +69,9 @@ def extract_cards(text: str) -> list[dict[str, str]]:
             "card_id": card_id,
             "name": name,
             "card_number": card_number,
+            "rarity": html.unescape(rarity_match.group("rarity")) if rarity_match else "",
             "full_name": full_name,
-            "slug": match.group("slug"),
+            "slug": slug_match.group("slug"),
         }
 
     return sorted(
@@ -68,7 +82,7 @@ def extract_cards(text: str) -> list[dict[str, str]]:
 
 def write_card_summary(output_path: Path, cards: list[dict[str, str]]) -> Path:
     summary_path = output_path.with_suffix(".cards.tsv")
-    lines = ["card_id\tcard_number\tname\tslug\tfull_name"]
+    lines = ["card_id\tset_code\tname\trarity\tslug\tfull_name"]
     for card in cards:
         lines.append(
             "\t".join(
@@ -76,6 +90,7 @@ def write_card_summary(output_path: Path, cards: list[dict[str, str]]) -> Path:
                     card["card_id"],
                     card["card_number"],
                     card["name"],
+                    card["rarity"],
                     card["slug"],
                     card["full_name"],
                 ]
@@ -125,10 +140,16 @@ def main() -> None:
     if cards:
         print("\nFirst cards:")
         for card in cards[:5]:
-            print(f"- {card['card_id']} | {card['card_number']} | {card['name']}")
+            print(
+                f"- {card['card_id']} | {card['card_number']} | "
+                f"{card['name']} | {card['rarity']}"
+            )
         print("\nLast cards:")
         for card in cards[-5:]:
-            print(f"- {card['card_id']} | {card['card_number']} | {card['name']}")
+            print(
+                f"- {card['card_id']} | {card['card_number']} | "
+                f"{card['name']} | {card['rarity']}"
+            )
     print("\nPreview:")
     print(text[:2000])
 
