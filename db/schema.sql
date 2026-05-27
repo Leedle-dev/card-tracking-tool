@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS card_images (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     card_id INTEGER NOT NULL,
     image_path TEXT NOT NULL,
+    source_url TEXT,
     image_role TEXT NOT NULL DEFAULT 'reference',
     notes TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,

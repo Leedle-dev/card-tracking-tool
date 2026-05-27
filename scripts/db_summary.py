@@ -28,6 +28,16 @@ def main() -> None:
             ORDER BY set_code, language
             """
         ).fetchall()
+        image_counts = conn.execute(
+            """
+            SELECT c.set_code, c.language, COUNT(*)
+            FROM card_images ci
+            JOIN cards c ON c.id = ci.card_id
+            WHERE ci.image_path LIKE 'data/card_images/%'
+            GROUP BY c.set_code, c.language
+            ORDER BY c.set_code, c.language
+            """
+        ).fetchall()
 
     print("Tables:")
     for (name,) in tables:
@@ -46,6 +56,12 @@ def main() -> None:
         print("- No cards imported yet")
     for set_code, set_name, language, count in card_counts:
         print(f"- {set_code} | {set_name} | {language}: {count}")
+
+    print("\nLocal image counts:")
+    if not image_counts:
+        print("- No local image paths recorded yet")
+    for set_code, language, count in image_counts:
+        print(f"- {set_code} | {language}: {count}")
 
 
 if __name__ == "__main__":

@@ -7,6 +7,13 @@ from urllib.request import Request, urlopen
 ROOT = Path(__file__).resolve().parents[1]
 DB_PATH = ROOT / "data" / "card_tracker.sqlite"
 SOURCE_URL = "https://www.pokipair.com/gem-pack-vol-5-card-list/"
+IMAGE_DIR = (
+    ROOT
+    / "data"
+    / "card_images"
+    / "s-chinese"
+    / "2026-04-24-CBB5C-Gem-Pack-Vol-5"
+)
 
 SET_NAME = "Gem Pack Vol. 5"
 SET_CODE = "CBB5C"
@@ -32,6 +39,15 @@ def fetch_source_html() -> str:
         return response.read().decode("utf-8", errors="replace")
 
 
+def ensure_source_url_column(conn: sqlite3.Connection) -> None:
+    columns = {
+        row[1]
+        for row in conn.execute("PRAGMA table_info(card_images)").fetchall()
+    }
+    if "source_url" not in columns:
+        conn.execute("ALTER TABLE card_images ADD COLUMN source_url TEXT")
+
+
 def extract_cards(html: str) -> list[tuple[str, str]]:
     found = {}
     for match in IMAGE_RE.finditer(html):
@@ -42,8 +58,62 @@ def extract_cards(html: str) -> list[tuple[str, str]]:
     return sorted(found.items(), key=lambda item: item[0])
 
 
-def upsert_card(conn: sqlite3.Connection, card_number: str, image_url: str) -> int:
+def reset_existing_import(conn: sqlite3.Connection) -> int:
+    card_ids = [
+        row[0]
+        for row in conn.execute(
+            """
+            SELECT id
+            FROM cards
+            WHERE set_code = ? AND language = ?
+            """,
+            (SET_CODE, LANGUAGE),
+        ).fetchall()
+    ]
+    conn.execute(
+        """
+        DELETE FROM cards
+        WHERE set_code = ? AND language = ?
+        """,
+        (SET_CODE, LANGUAGE),
+    )
+    return len(card_ids)
+
+
+def clear_existing_local_images() -> int:
+    IMAGE_DIR.mkdir(parents=True, exist_ok=True)
+    removed = 0
+    for path in IMAGE_DIR.glob("*.png"):
+        path.unlink()
+        removed += 1
+    return removed
+
+
+def download_image(card_number: str, image_url: str) -> Path:
+    image_path = IMAGE_DIR / f"{card_number}.png"
+    request = Request(
+        image_url,
+        headers={
+            "User-Agent": "card-tracking-tool/0.1 (+local inventory research)"
+        },
+    )
+    with urlopen(request, timeout=30) as response:
+        image_path.write_bytes(response.read())
+    return image_path
+
+
+def project_relative_path(path: Path) -> str:
+    return path.relative_to(ROOT).as_posix()
+
+
+def insert_card(
+    conn: sqlite3.Connection,
+    card_number: str,
+    source_url: str,
+    local_image_path: Path,
+) -> int:
     display_name = f"{SET_NAME} #{card_number}"
+    relative_image_path = project_relative_path(local_image_path)
     notes = (
         f"Seeded from PokiPair set list: {SOURCE_URL}\n"
         f"{RARITY_NOTE}\n"
@@ -66,13 +136,6 @@ def upsert_card(conn: sqlite3.Connection, card_number: str, image_url: str) -> i
             primary_image_path
         )
         VALUES (?, 'Pokemon', ?, ?, ?, ?, ?, ?, 'reference', ?, ?)
-        ON CONFLICT(set_code, card_number, language) DO UPDATE SET
-            name = excluded.name,
-            set_name = excluded.set_name,
-            region = excluded.region,
-            release_year = excluded.release_year,
-            notes = excluded.notes,
-            primary_image_path = excluded.primary_image_path
         """,
         (
             display_name,
@@ -83,7 +146,7 @@ def upsert_card(conn: sqlite3.Connection, card_number: str, image_url: str) -> i
             REGION,
             RELEASE_YEAR,
             notes,
-            image_url,
+            relative_image_path,
         ),
     )
 
@@ -98,12 +161,15 @@ def upsert_card(conn: sqlite3.Connection, card_number: str, image_url: str) -> i
 
     conn.execute(
         """
-        INSERT INTO card_images (card_id, image_path, image_role, notes)
-        VALUES (?, ?, 'source_reference', ?)
-        ON CONFLICT(card_id, image_path, image_role) DO UPDATE SET
-            notes = excluded.notes
+        INSERT INTO card_images (card_id, image_path, source_url, image_role, notes)
+        VALUES (?, ?, ?, 'source_reference', ?)
         """,
-        (card_id, image_url, f"Image reference from {SOURCE_URL}"),
+        (
+            card_id,
+            relative_image_path,
+            source_url,
+            f"Downloaded from PokiPair set list: {SOURCE_URL}",
+        ),
     )
 
     return card_id
@@ -122,10 +188,25 @@ def main() -> None:
 
     with sqlite3.connect(DB_PATH) as conn:
         conn.execute("PRAGMA foreign_keys = ON")
-        for card_number, image_url in cards:
-            upsert_card(conn, card_number, image_url)
+        ensure_source_url_column(conn)
+        removed_rows = reset_existing_import(conn)
 
-    print(f"Imported {len(cards)} {SET_NAME} card references into {DB_PATH}")
+    removed_images = clear_existing_local_images()
+    downloaded = []
+    for card_number, image_url in cards:
+        downloaded.append((card_number, image_url, download_image(card_number, image_url)))
+
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("PRAGMA foreign_keys = ON")
+        ensure_source_url_column(conn)
+        for card_number, image_url, local_image_path in downloaded:
+            insert_card(conn, card_number, image_url, local_image_path)
+
+    print(
+        f"Rebuilt {len(cards)} {SET_NAME} card references in {DB_PATH}\n"
+        f"Deleted {removed_rows} old database rows and {removed_images} old local images.\n"
+        f"Images saved to {IMAGE_DIR}"
+    )
 
 
 if __name__ == "__main__":
