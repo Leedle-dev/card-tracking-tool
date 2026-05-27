@@ -53,3 +53,30 @@ Later Phases
 Development Notes
 
 This repository starts as a local workspace for planning and building the tool. The preferred first implementation should be easy to run on Windows, use a local database, and keep the earliest version focused on reliable manual workflows before adding marketplace automation.
+
+Local Database
+
+The project uses SQLite for the local database. The schema lives in db/schema.sql, and the local database file is created at data/card_tracker.sqlite.
+
+The database file is intentionally ignored by Git because it will contain local inventory and pricing data.
+
+To initialize or update the local database:
+
+1. Run the database initializer:
+   C:\Users\Lee\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe scripts\init_db.py
+
+2. Confirm that data/card_tracker.sqlite exists.
+
+3. Optional: print a quick database summary:
+   C:\Users\Lee\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe scripts\db_summary.py
+
+Initial database coverage:
+
+- Cards and card images.
+- Cross-language or related-print card equivalents.
+- Marketplace sources.
+- Raw price records.
+- Graded price records.
+- Grading fee profiles.
+- Grading EV assumptions.
+- Saved grading EV calculation runs.
