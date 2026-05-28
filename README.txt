@@ -85,7 +85,7 @@ Example Data
 
 Gem Pack Vol. 5 can be imported from the PokiPair set list as starter reference data:
 
-C:\Users\Lee\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe scripts\import_gem_pack_vol5.py --language s-chinese --set-name "Gem Pack Vol. 5"
+C:\Users\Lee\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe scripts\import_tcgcollector_set.py --language s-chinese --set-name "Gem Pack Vol. 5"
 
 This importer resolves the requested language and set name from the local set_catalog table, fetches the TCGcollector set page, rebuilds the card rows, downloads card images into data/card_images/, and stores the local image path in SQLite. The original TCGcollector image URL and card page URL are retained as source metadata.
 
