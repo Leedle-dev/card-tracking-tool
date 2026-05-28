@@ -117,6 +117,40 @@ Japanese Houndoom, Night Wanderer 066/064
   - BGS 9.5 or higher: 98, 93.3%
   - Working note: this is a strong support point for using Japanese BGS grade rates as the closest available prior for Simplified Chinese copies when Chinese population data is sparse.
 
+Japanese 151 Pikachu Beckett Benchmark Data
+
+This is not part of the Houndoom card-family comparison, but it is useful as a high-population Japanese-print benchmark for BGS grade distributions.
+
+- Source: Beckett / BGS population report supplied from public GemRate-style table.
+- Set: 2023 Pokemon Scarlet and Violet Strength Expansion Pack 151 Japanese Mirror Foil Poke Ball Pattern.
+
+- Pikachu AR, card number 173:
+  - BGS total: 1,642
+  - BGS 7: 3, 0.2%
+  - BGS 7.5: 1, 0.1%
+  - BGS 8: 4, 0.2%
+  - BGS 8.5: 17, 1.0%
+  - BGS 9: 184, 11.2%
+  - BGS 9.5 Gem Mint: 1,074, 65.4%
+  - BGS 10 Pristine: 316, 19.2%
+  - BGS 10 Black Label: 41, 2.5%
+  - BGS 9.5 or higher: 1,431, 87.1%
+  - BGS 10 or higher: 357, 21.7%
+
+- Pikachu Master Ball Reverse Holo C, card number 025:
+  - BGS total: 536
+  - BGS 8: 2, 0.4%
+  - BGS 8.5: 4, 0.7%
+  - BGS 9: 42, 7.8%
+  - BGS 9.5 Gem Mint: 354, 66.0%
+  - BGS 10 Pristine: 121, 22.6%
+  - BGS 10 Black Label: 13, 2.4%
+  - BGS 9.5 or higher: 488, 91.0%
+  - BGS 10 or higher: 134, 25.0%
+
+- Small-population Pikachu 025 rows were also present, but totals of 1 or 8 are too thin to use as benchmark priors.
+- Working note: these high-volume 151 rows reinforce that Japanese modern cards can have very high BGS 9.5+ rates and meaningful BGS 10 / Black Label tails, but card-specific surfaces, holo patterns, and selection bias still matter.
+
 Simplified Chinese Houndoom, Gem Pack Vol. 5 0807/07
 
 - GemRate:
