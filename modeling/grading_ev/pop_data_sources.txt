@@ -1,0 +1,128 @@
+Population Data Sources Research Note
+
+Last checked: 2026-05-28
+
+Purpose
+
+This note tracks where population and grade-rate data can come from, how reliable each source looks, and what was found for the Houndoom grading model test case.
+
+Target Houndoom Cards
+
+- English: Shrouded Fable, SFA, 066/064, Illustration Rare
+- Japanese: Night Wanderer, SV6a, 066/064, Art Rare
+- Simplified Chinese: Gem Pack Vol. 5, CBB5C, 0807/07, Triple Rare
+
+Source Strategy
+
+1. GemRate
+   - Best conceptual source for model inputs.
+   - Public pages expose useful PSA set and card-level data through indexed pages.
+   - Partner API exists for unified PSA, Beckett/BGS, SGC, and CGC population data, but it appears to be commercial / partner access rather than a free public API.
+   - Useful for grade-rate and trend context when public pages are indexed.
+   - Treat GemRate as the preferred analytical source if access becomes affordable or if public pages are enough for a card.
+
+2. PriceCharting
+   - Useful fallback for PSA and CGC population tables.
+   - Exposes per-grade PSA and CGC population counts in static page text.
+   - Updates monthly.
+   - Half-grade populations are folded into the nearest whole grade, so it is not suitable for clean CGC 9.5 or BGS 9.5 modeling.
+   - Also exposes rough graded price estimates, including BGS 10 Black and CGC Pristine 10, but those are prices rather than population counts.
+
+3. PSA official population report
+   - Official source for PSA population data.
+   - Direct scripted requests currently hit Cloudflare challenge pages.
+   - Browser/manual lookup may still work.
+   - Use official PSA pages for manual verification when necessary, but do not assume automated collection is reliable.
+
+4. Beckett / BGS official population report
+   - Official source for BGS population data.
+   - Public pages are discoverable, but static HTML did not expose useful card-grade rows during this test.
+   - Some pages appear to require login or subscription context for search results.
+   - This is a key source because BGS 9.5, Pristine 10, and Black Label 10 should be modeled separately.
+   - Near-term approach: manual lookup and entry, unless a stable public endpoint is found.
+
+5. CGC official population report
+   - Official source for CGC population data.
+   - Public pages are Angular/dynamic and static fetches show template placeholders rather than loaded rows.
+   - Search results can expose set pages, but automated extraction needs more investigation.
+   - PriceCharting is easier for broad PSA/CGC grade buckets, but official CGC will be needed for Pristine 10 vs Gem Mint 10 separation.
+
+Houndoom Data Snapshot
+
+English Houndoom, Shrouded Fable 066/064
+
+- GemRate PSA card-level snapshot:
+  - Source: https://www.gemrate.com/item-details?category=tcg-cards&grader=psa&set_name=Pokemon+Sfa+EN-Shrouded+Fable&year=2024
+  - Indexed row found for Houndoom Illustration Rare #066.
+  - PSA gems: 2,975
+  - PSA total: 7,982
+  - PSA gem rate: 37%
+  - GemRate set page updated around 2026-05-25 / 2026-05-26 in indexed results.
+
+- PriceCharting PSA/CGC population table:
+  - Source: https://www.pricecharting.com/pop/item/pokemon-shrouded-fable/houndoom-66
+  - PSA total: 7,649
+  - PSA 10: 2,915
+  - PSA 9: 4,064
+  - CGC total: 435
+  - CGC 10: 267
+  - CGC 9: 117
+  - PriceCharting notes monthly updates and folds half grades into nearest whole grade.
+  - Difference from GemRate is expected because the sources update differently and may use slightly different category handling.
+
+Japanese Houndoom, Night Wanderer 066/064
+
+- GemRate PSA set/subject snapshot:
+  - Source: https://www.gemrate.com/item-details-advanced?category=tcg-cards&grader=psa&set_name=Pokemon+Japanese+Sv6a-Night+Wanderer&year=2024
+  - Houndoom subject aggregate:
+    - PSA gems: 3,064
+    - PSA total: 3,509
+    - PSA gem rate: 87.3%
+  - Caveat: this is a subject aggregate from the advanced set view. It may combine Houndoom cards in the set, so verify exact card-level mapping before using as final model input.
+
+- PriceCharting PSA/CGC population table:
+  - Source: https://www.pricecharting.com/pop/item/pokemon-japanese-night-wanderer/houndoom-66
+  - PSA total: 3,368
+  - PSA 10: 2,944
+  - PSA 9: 284
+  - CGC total: 3,101
+  - CGC 10: 2,148
+  - CGC 9: 599
+  - This strongly supports the working assumption that Japanese print quality / grade outcomes are much stronger than English for this card.
+
+Simplified Chinese Houndoom, Gem Pack Vol. 5 0807/07
+
+- GemRate:
+  - No useful public GemRate result found during this test.
+
+- PriceCharting:
+  - Source: https://www.pricecharting.com/es/game/pokemon-chinese-gem-pack-5/houndoom-807
+  - Found a raw/ungraded page with one observed raw sale around $12.99.
+  - No graded PSA, CGC, BGS, SGC, TAG, or ACE prices were populated.
+  - No population table was found in the checked page.
+
+- Working interpretation:
+  - Simplified Chinese population is likely too thin or too new for reliable public pop data.
+  - For early EV tests, use Japanese Night Wanderer Houndoom as the closest print-quality prior, with a confidence haircut for Chinese-specific uncertainty and liquidity.
+
+Initial Findings
+
+- GemRate is the best single source if API access is available.
+- PriceCharting is the easiest static fallback for PSA and CGC whole-grade population snapshots.
+- Official PSA, BGS, and CGC sites should be treated as manual verification sources unless a stable accessible endpoint is found.
+- BGS remains the biggest data gap for the Beckett thesis because public fallback sources mostly provide prices, not clean BGS population by 9.5 / 10 / Black Label.
+- CGC 10 data is available through PriceCharting, but CGC Pristine 10 vs Gem Mint 10 requires official CGC or GemRate-style detail.
+
+Model Implications
+
+- Store source and confidence on every population snapshot.
+- Do not mix PriceCharting CGC 10 with CGC Pristine 10; PriceCharting's population table only shows whole-grade CGC buckets.
+- Do not treat GemRate and PriceCharting totals as contradictory without checking update dates and taxonomy.
+- For cards with sparse Chinese data, use Japanese grade-rate priors and mark the assumption explicitly.
+
+Next Actions
+
+1. Add database tables for population snapshots only after one more manual source check for Beckett.
+2. Try a browser/manual Beckett lookup for English and Japanese Houndoom to see if BGS grade rows are visible in a normal session.
+3. Decide whether PriceCharting PSA/CGC data is good enough for the first automated snapshot importer.
+4. Keep GemRate API on the future wishlist, but do not block v1 on paid API access.
