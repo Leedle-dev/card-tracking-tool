@@ -119,6 +119,10 @@ To inspect raw and graded price records:
 
 C:\Users\Lee\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe scripts\list_price_records.py Houndoom
 
+The current sample Houndoom EV workbook lives at:
+
+reports/grading_ev/houndoom_ev_report.xlsx
+
 To fetch TCGcollector set catalogs for International, Japanese, and Simplified Chinese sets:
 
 C:\Users\Lee\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe scripts\fetch_tcgcollector_sets.py

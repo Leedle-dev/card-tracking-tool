@@ -12,6 +12,12 @@ data/card_images/**
 # Raw fetched website/debug output
 data/raw_fetches/
 
+# Local Node dependency link used for report builders
+node_modules/
+
+# Rendered workbook preview images
+reports/grading_ev/*_preview.png
+
 # OS/editor noise
 .DS_Store
 Thumbs.db
