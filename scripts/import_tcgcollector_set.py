@@ -8,6 +8,7 @@ import html
 import re
 import shutil
 import sqlite3
+import unicodedata
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -69,6 +70,8 @@ def normalize_region(language: str) -> str:
 
 
 def slugify(value: str) -> str:
+    value = unicodedata.normalize("NFKD", value.strip())
+    value = value.encode("ascii", "ignore").decode("ascii")
     value = re.sub(r"[^A-Za-z0-9]+", "-", value.strip())
     return value.strip("-") or "unknown"
 
