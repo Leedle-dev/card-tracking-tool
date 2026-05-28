@@ -18,6 +18,10 @@ node_modules/
 # Rendered workbook preview images
 reports/grading_ev/*_preview.png
 
+# Office temporary lock files
+~$*
+.~lock.*
+
 # OS/editor noise
 .DS_Store
 Thumbs.db
