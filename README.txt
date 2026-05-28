@@ -111,6 +111,14 @@ To inspect recorded grading population snapshots:
 
 C:\Users\Lee\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe scripts\list_population_snapshots.py
 
+To seed the current example Houndoom pricing records:
+
+C:\Users\Lee\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe scripts\seed_example_pricing.py
+
+To inspect raw and graded price records:
+
+C:\Users\Lee\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe scripts\list_price_records.py Houndoom
+
 To fetch TCGcollector set catalogs for International, Japanese, and Simplified Chinese sets:
 
 C:\Users\Lee\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe scripts\fetch_tcgcollector_sets.py

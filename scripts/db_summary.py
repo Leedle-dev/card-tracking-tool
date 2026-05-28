@@ -74,6 +74,12 @@ def main() -> None:
             ORDER BY grading_company
             """
         ).fetchall()
+        raw_price_count = conn.execute(
+            "SELECT COUNT(*) FROM raw_price_records"
+        ).fetchone()[0]
+        graded_price_count = conn.execute(
+            "SELECT COUNT(*) FROM graded_price_records"
+        ).fetchone()[0]
 
     print("Tables:")
     for (name,) in tables:
@@ -111,6 +117,10 @@ def main() -> None:
         print("- No population snapshots recorded yet")
     for grading_company, count in population_snapshot_counts:
         print(f"- {grading_company}: {count}")
+
+    print("\nPrice record counts:")
+    print(f"- Raw: {raw_price_count}")
+    print(f"- Graded: {graded_price_count}")
 
 
 if __name__ == "__main__":

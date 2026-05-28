@@ -11,6 +11,7 @@ SOURCES = [
     ("eBay", "https://www.ebay.com", "Marketplace pricing source."),
     ("TCGplayer", "https://www.tcgplayer.com", "Trading card marketplace pricing source."),
     ("CardTrader", "https://www.cardtrader.com", "International card marketplace pricing source."),
+    ("PriceCharting", "https://www.pricecharting.com", "Price guide, population, and historic sale aggregation source."),
     ("Manual Comp", None, "Manually entered comparable sale or listing."),
 ]
 
