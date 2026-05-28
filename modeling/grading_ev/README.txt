@@ -61,6 +61,19 @@ Beckett should be modeled with distinct grade outcomes, especially:
 
 Black Label should not be blended with ordinary BGS 10 outcomes. It has a different rarity and market behavior.
 
+Working Grade Difficulty Hierarchy
+
+This hierarchy is for modeling how difficult it is for a submit-worthy card to hit each grade. It is not a resale price hierarchy, cost hierarchy, or universal market preference ranking.
+
+1. BGS Black Label 10
+2. CGC Pristine 10
+3. BGS Pristine 10
+4. PSA 10 / CGC Gem Mint 10
+5. BGS 9.5
+6. CGC 9.5
+7. PSA 9 / BGS 9 / CGC 9
+8. Lower grades
+
 Likely Future Tables
 
 - grade_population_snapshots
