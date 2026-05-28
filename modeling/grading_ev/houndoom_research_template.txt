@@ -31,7 +31,7 @@ Research Questions
 4. Print and condition assumptions
    - Is the English print likely to have lower gem rates than Japanese or Simplified Chinese?
    - Are there known condition issues for this card or set?
-   - Does the local copy have centering, surface, corner, or edge risks?
+   - Assumption for current model: only submit-worthy raw copies are evaluated for grading EV. Non-submit-worthy copies are assumed to be sold raw.
 
 5. EV notes
    - Raw sale net estimate:
@@ -48,3 +48,8 @@ Research Questions
 Working Conclusion
 
 Use this section for a human-readable recommendation after the numbers are gathered.
+
+TODO / Later
+
+- Add local copy condition screening for centering, surface, corners, and edges.
+- Separate inventory into submit-worthy, raw-only, and undecided groups before running production EV decisions.

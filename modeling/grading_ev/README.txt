@@ -8,6 +8,8 @@ Core Model
 
 The grading model should not rely only on manually entered grade probabilities and static sale prices. It should combine:
 
+Current testing assumption: the EV model only evaluates raw cards that already look worth submitting. Cards that do not look submit-worthy are assumed to be sold raw. Detailed local copy condition screening is a later workflow.
+
 1. Grade probability data
    - Observed grade distributions from sources such as GemRate, Beckett population reports, PSA population reports, and other available grading population sources.
    - Separate grade distributions by card, grading company, language, region, and print source when possible.
