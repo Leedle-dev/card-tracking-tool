@@ -26,6 +26,16 @@ GRADING_PROFILES = [
         0.13,
         "Placeholder fee profile. Update before relying on EV results.",
     ),
+    (
+        "BGS Bulk Estimate",
+        "BGS",
+        "Bulk",
+        1500,
+        125,
+        200,
+        0.1325,
+        "Beckett bulk grading estimate using per-card multi-submission shipping allocations.",
+    ),
 ]
 
 
