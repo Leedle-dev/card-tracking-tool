@@ -73,6 +73,9 @@ To initialize or update the local database:
 Initial database coverage:
 
 - Cards and card images.
+- TCGcollector set catalog entries, with imported cards linked back to their source set.
+- Pokedex records for canonical Pokemon identities.
+- Illustrator records and card-to-illustrator links for future detail-page enrichment.
 - Cross-language or related-print card equivalents.
 - Marketplace sources.
 - Raw price records.
@@ -81,9 +84,9 @@ Initial database coverage:
 - Grading EV assumptions.
 - Saved grading EV calculation runs.
 
-Example Data
+Example Imports
 
-Gem Pack Vol. 5 can be imported from the PokiPair set list as starter reference data:
+Gem Pack Vol. 5 can be imported from TCGcollector as starter reference data:
 
 C:\Users\Lee\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe scripts\import_tcgcollector_set.py --language s-chinese --set-name "Gem Pack Vol. 5"
 

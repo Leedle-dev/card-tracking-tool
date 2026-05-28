@@ -20,28 +20,29 @@ def main() -> None:
         rows = conn.execute(
             """
             SELECT
-                language,
-                set_name,
-                set_code,
+                COALESCE(sc.language, c.language) AS language,
+                COALESCE(sc.set_name, c.set_name) AS set_name,
+                COALESCE(sc.set_code, c.set_code) AS set_code,
                 card_number,
-                name,
-                rarity,
-                tcgcollector_card_id,
-                card_detail_url,
-                primary_image_path
-            FROM cards
+                c.name,
+                c.rarity,
+                c.tcgcollector_card_id,
+                c.card_detail_url,
+                c.primary_image_path
+            FROM cards c
+            LEFT JOIN set_catalog sc ON sc.id = c.set_catalog_id
             WHERE
-                (? = '' OR set_code = ?)
-                AND (? = '' OR language = ?)
+                (? = '' OR COALESCE(sc.set_code, c.set_code) = ?)
+                AND (? = '' OR COALESCE(sc.language, c.language) = ?)
                 AND (
                     ? = ''
-                    OR card_number LIKE ?
-                    OR name LIKE ?
-                    OR rarity LIKE ?
-                    OR set_name LIKE ?
-                    OR set_code LIKE ?
+                    OR c.card_number LIKE ?
+                    OR c.name LIKE ?
+                    OR c.rarity LIKE ?
+                    OR COALESCE(sc.set_name, c.set_name) LIKE ?
+                    OR COALESCE(sc.set_code, c.set_code) LIKE ?
                 )
-            ORDER BY language, set_name, card_number
+            ORDER BY language, set_name, c.card_number
             LIMIT 50
             """,
             (

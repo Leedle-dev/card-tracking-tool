@@ -1,5 +1,6 @@
 from pathlib import Path
 import csv
+from datetime import datetime
 import sqlite3
 
 
@@ -13,10 +14,26 @@ CATALOG_URLS = {
     "s-chinese": "https://www.tcgcollector.com/sets/cn",
 }
 
+LANGUAGE_BY_REGION = {
+    "international": "English",
+    "japanese": "Japanese",
+    "s-chinese": "Simplified Chinese",
+}
+
 
 def parse_int(value: str) -> int | None:
     value = value.strip()
     return int(value) if value else None
+
+
+def parse_release_year(value: str) -> int | None:
+    value = value.strip()
+    if not value:
+        return None
+    try:
+        return datetime.strptime(value, "%b %d, %Y").year
+    except ValueError:
+        return None
 
 
 def load_rows() -> list[dict[str, str]]:
@@ -30,21 +47,35 @@ def load_rows() -> list[dict[str, str]]:
         return list(csv.DictReader(file, delimiter="\t"))
 
 
+def ensure_schema_columns(conn: sqlite3.Connection) -> None:
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(set_catalog)").fetchall()}
+    columns_to_add = {
+        "language": "TEXT",
+        "release_year": "INTEGER",
+    }
+    for column, column_type in columns_to_add.items():
+        if column not in columns:
+            conn.execute(f"ALTER TABLE set_catalog ADD COLUMN {column} {column_type}")
+
+
 def import_rows(rows: list[dict[str, str]]) -> None:
     if not DB_PATH.exists():
         raise SystemExit(f"Database not found: {DB_PATH}. Run scripts/init_db.py first.")
 
     with sqlite3.connect(DB_PATH) as conn:
         conn.execute("PRAGMA foreign_keys = ON")
+        ensure_schema_columns(conn)
         conn.executemany(
             """
             INSERT INTO set_catalog (
                 source_name,
                 source_region,
+                language,
                 tcgcollector_set_id,
                 set_name,
                 set_code,
                 release_date_text,
+                release_year,
                 card_count,
                 set_url,
                 slug,
@@ -54,10 +85,12 @@ def import_rows(rows: list[dict[str, str]]) -> None:
             VALUES (
                 'TCGcollector',
                 :source_region,
+                :language,
                 :tcgcollector_set_id,
                 :set_name,
                 :set_code,
                 :release_date_text,
+                :release_year,
                 :card_count,
                 :set_url,
                 :slug,
@@ -68,7 +101,9 @@ def import_rows(rows: list[dict[str, str]]) -> None:
             DO UPDATE SET
                 set_name = excluded.set_name,
                 set_code = excluded.set_code,
+                language = excluded.language,
                 release_date_text = excluded.release_date_text,
+                release_year = excluded.release_year,
                 card_count = excluded.card_count,
                 set_url = excluded.set_url,
                 slug = excluded.slug,
@@ -78,10 +113,12 @@ def import_rows(rows: list[dict[str, str]]) -> None:
             [
                 {
                     "source_region": row["source_region"],
+                    "language": LANGUAGE_BY_REGION.get(row["source_region"]),
                     "tcgcollector_set_id": parse_int(row["tcgcollector_set_id"]),
                     "set_name": row["set_name"],
                     "set_code": row["set_code"] or None,
                     "release_date_text": row["release_date_text"] or None,
+                    "release_year": parse_release_year(row["release_date_text"]),
                     "card_count": parse_int(row["card_count"]),
                     "set_url": row["set_url"],
                     "slug": row["slug"] or None,

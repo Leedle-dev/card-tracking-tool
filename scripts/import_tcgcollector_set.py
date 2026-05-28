@@ -116,6 +116,8 @@ def ensure_schema_columns(conn: sqlite3.Connection) -> None:
         for row in conn.execute("PRAGMA table_info(cards)").fetchall()
     }
     card_columns_to_add = {
+        "set_catalog_id": "INTEGER",
+        "pokedex_id": "INTEGER",
         "pokemon_name": "TEXT",
         "pokemon_index": "INTEGER",
         "variant_code": "TEXT",
@@ -135,16 +137,31 @@ def ensure_schema_columns(conn: sqlite3.Connection) -> None:
     if "source_url" not in image_columns:
         conn.execute("ALTER TABLE card_images ADD COLUMN source_url TEXT")
 
+    set_catalog_columns = {
+        row[1]
+        for row in conn.execute("PRAGMA table_info(set_catalog)").fetchall()
+    }
+    set_catalog_columns_to_add = {
+        "language": "TEXT",
+        "release_year": "INTEGER",
+    }
+    for column, column_type in set_catalog_columns_to_add.items():
+        if column not in set_catalog_columns:
+            conn.execute(f"ALTER TABLE set_catalog ADD COLUMN {column} {column_type}")
+
 
 def resolve_set(conn: sqlite3.Connection, region: str, set_name: str) -> dict[str, object]:
     exact_rows = conn.execute(
         """
         SELECT
+            id,
             source_region,
+            language,
             tcgcollector_set_id,
             set_name,
             set_code,
             release_date_text,
+            release_year,
             card_count,
             set_url,
             slug
@@ -159,11 +176,14 @@ def resolve_set(conn: sqlite3.Connection, region: str, set_name: str) -> dict[st
         rows = conn.execute(
             """
             SELECT
+                id,
                 source_region,
+                language,
                 tcgcollector_set_id,
                 set_name,
                 set_code,
                 release_date_text,
+                release_year,
                 card_count,
                 set_url,
                 slug
@@ -188,14 +208,17 @@ def resolve_set(conn: sqlite3.Connection, region: str, set_name: str) -> dict[st
 
     row = rows[0]
     return {
-        "source_region": row[0],
-        "tcgcollector_set_id": row[1],
-        "set_name": row[2],
-        "set_code": row[3],
-        "release_date_text": row[4],
-        "card_count": row[5],
-        "set_url": row[6],
-        "slug": row[7],
+        "id": row[0],
+        "source_region": row[1],
+        "language": row[2],
+        "tcgcollector_set_id": row[3],
+        "set_name": row[4],
+        "set_code": row[5],
+        "release_date_text": row[6],
+        "release_year": row[7],
+        "card_count": row[8],
+        "set_url": row[9],
+        "slug": row[10],
     }
 
 
@@ -285,6 +308,7 @@ def clear_existing_local_images(image_dir: Path) -> int:
 
 def reset_existing_import(
     conn: sqlite3.Connection,
+    set_catalog_id: int | None,
     set_code: str | None,
     set_name: str,
     language: str,
@@ -293,24 +317,32 @@ def reset_existing_import(
         """
         SELECT id
         FROM cards
-        WHERE language = ?
-          AND (
-            (set_code IS NOT NULL AND set_code = ?)
-            OR set_name = ?
-          )
+        WHERE
+            set_catalog_id = ?
+            OR (
+                language = ?
+                AND (
+                    (set_code IS NOT NULL AND set_code = ?)
+                    OR set_name = ?
+                )
+            )
         """,
-        (language, set_code, set_name),
+        (set_catalog_id, language, set_code, set_name),
     ).fetchall()
     conn.execute(
         """
         DELETE FROM cards
-        WHERE language = ?
-          AND (
-            (set_code IS NOT NULL AND set_code = ?)
-            OR set_name = ?
-          )
+        WHERE
+            set_catalog_id = ?
+            OR (
+                language = ?
+                AND (
+                    (set_code IS NOT NULL AND set_code = ?)
+                    OR set_name = ?
+                )
+            )
         """,
-        (language, set_code, set_name),
+        (set_catalog_id, language, set_code, set_name),
     )
     return len(rows)
 
@@ -334,9 +366,9 @@ def import_card(
     image_path.write_bytes(image_bytes)
     relative_image_path = project_relative_path(image_path)
 
-    release_year = None
+    release_year = set_row.get("release_year")
     release_date_text = set_row.get("release_date_text")
-    if release_date_text:
+    if release_year is None and release_date_text:
         try:
             release_year = datetime.strptime(str(release_date_text), "%b %d, %Y").year
         except ValueError:
@@ -350,6 +382,7 @@ def import_card(
     conn.execute(
         """
         INSERT INTO cards (
+            set_catalog_id,
             name,
             game,
             set_name,
@@ -367,9 +400,10 @@ def import_card(
             notes,
             primary_image_path
         )
-        VALUES (?, 'Pokemon', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'reference', ?, ?)
+        VALUES (?, ?, 'Pokemon', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'reference', ?, ?)
         """,
         (
+            set_row["id"],
             card["name"],
             set_row["set_name"],
             set_row.get("set_code"),
@@ -387,14 +421,7 @@ def import_card(
         ),
     )
 
-    card_id = conn.execute(
-        """
-        SELECT id
-        FROM cards
-        WHERE set_code = ? AND card_number = ? AND language = ?
-        """,
-        (set_row.get("set_code"), card["card_number"], language),
-    ).fetchone()[0]
+    card_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
 
     conn.execute(
         """
@@ -447,6 +474,7 @@ def main() -> None:
         ensure_schema_columns(conn)
         removed_rows = reset_existing_import(
             conn,
+            int(set_row["id"]),
             set_row.get("set_code"),
             str(set_row["set_name"]),
             language,

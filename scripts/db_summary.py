@@ -22,20 +22,36 @@ def main() -> None:
         ).fetchall()
         card_counts = conn.execute(
             """
-            SELECT set_code, set_name, language, COUNT(*)
-            FROM cards
-            GROUP BY set_code, set_name, language
-            ORDER BY set_code, language
+            SELECT
+                COALESCE(sc.set_code, c.set_code),
+                COALESCE(sc.set_name, c.set_name),
+                COALESCE(sc.language, c.language),
+                COUNT(*)
+            FROM cards c
+            LEFT JOIN set_catalog sc ON sc.id = c.set_catalog_id
+            GROUP BY
+                COALESCE(sc.set_code, c.set_code),
+                COALESCE(sc.set_name, c.set_name),
+                COALESCE(sc.language, c.language)
+            ORDER BY 1, 3
             """
         ).fetchall()
         image_counts = conn.execute(
             """
-            SELECT c.set_code, c.language, COUNT(*)
+            SELECT
+                COALESCE(sc.set_code, c.set_code),
+                COALESCE(sc.language, c.language),
+                COUNT(*)
             FROM card_images ci
             JOIN cards c ON c.id = ci.card_id
+            LEFT JOIN set_catalog sc ON sc.id = c.set_catalog_id
             WHERE ci.image_path LIKE 'data/card_images/%'
-            GROUP BY c.set_code, c.language
-            ORDER BY c.set_code, c.language
+            GROUP BY
+                COALESCE(sc.set_code, c.set_code),
+                COALESCE(sc.language, c.language)
+            ORDER BY
+                COALESCE(sc.set_code, c.set_code),
+                COALESCE(sc.language, c.language)
             """
         ).fetchall()
         set_catalog_counts = conn.execute(
@@ -46,6 +62,10 @@ def main() -> None:
             ORDER BY source_region
             """
         ).fetchall()
+        linked_card_count = conn.execute(
+            "SELECT COUNT(*) FROM cards WHERE set_catalog_id IS NOT NULL"
+        ).fetchone()[0]
+        total_card_count = conn.execute("SELECT COUNT(*) FROM cards").fetchone()[0]
 
     print("Tables:")
     for (name,) in tables:
@@ -60,6 +80,7 @@ def main() -> None:
         print(f"- {name} ({company})")
 
     print("\nCard counts:")
+    print(f"- Linked to set catalog: {linked_card_count}/{total_card_count}")
     if not card_counts:
         print("- No cards imported yet")
     for set_code, set_name, language, count in card_counts:

@@ -2,6 +2,8 @@ PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS cards (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    set_catalog_id INTEGER,
+    pokedex_id INTEGER,
     name TEXT NOT NULL,
     game TEXT NOT NULL DEFAULT 'Pokemon',
     set_name TEXT,
@@ -26,6 +28,16 @@ CREATE TABLE IF NOT EXISTS cards (
     sale_status TEXT NOT NULL DEFAULT 'inventory',
     notes TEXT,
     primary_image_path TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (set_catalog_id) REFERENCES set_catalog(id),
+    FOREIGN KEY (pokedex_id) REFERENCES pokedex(id)
+);
+
+CREATE TABLE IF NOT EXISTS pokedex (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    pokedex_number INTEGER NOT NULL UNIQUE,
+    pokemon_name TEXT NOT NULL UNIQUE,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -66,10 +78,12 @@ CREATE TABLE IF NOT EXISTS set_catalog (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     source_name TEXT NOT NULL DEFAULT 'TCGcollector',
     source_region TEXT NOT NULL,
+    language TEXT,
     tcgcollector_set_id INTEGER NOT NULL,
     set_name TEXT NOT NULL,
     set_code TEXT,
     release_date_text TEXT,
+    release_year INTEGER,
     card_count INTEGER,
     set_url TEXT NOT NULL,
     slug TEXT,
@@ -78,6 +92,25 @@ CREATE TABLE IF NOT EXISTS set_catalog (
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (source_name, source_region, tcgcollector_set_id)
+);
+
+CREATE TABLE IF NOT EXISTS illustrators (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    source_url TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS card_illustrators (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    card_id INTEGER NOT NULL,
+    illustrator_id INTEGER NOT NULL,
+    source_url TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE,
+    FOREIGN KEY (illustrator_id) REFERENCES illustrators(id) ON DELETE CASCADE,
+    UNIQUE (card_id, illustrator_id)
 );
 
 CREATE TABLE IF NOT EXISTS raw_price_records (
@@ -160,10 +193,20 @@ CREATE TABLE IF NOT EXISTS grading_ev_runs (
 
 CREATE INDEX IF NOT EXISTS idx_cards_search ON cards(name, set_name, card_number, language);
 CREATE INDEX IF NOT EXISTS idx_cards_sale_status ON cards(sale_status);
+CREATE INDEX IF NOT EXISTS idx_cards_set_catalog_id ON cards(set_catalog_id);
+CREATE INDEX IF NOT EXISTS idx_cards_pokedex_id ON cards(pokedex_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_cards_set_number_language
 ON cards(set_code, card_number, language);
 CREATE INDEX IF NOT EXISTS idx_set_catalog_lookup
 ON set_catalog(source_region, set_name, set_code);
+CREATE INDEX IF NOT EXISTS idx_set_catalog_language
+ON set_catalog(language);
+CREATE INDEX IF NOT EXISTS idx_pokedex_name
+ON pokedex(pokemon_name);
+CREATE INDEX IF NOT EXISTS idx_card_illustrators_card
+ON card_illustrators(card_id);
+CREATE INDEX IF NOT EXISTS idx_card_illustrators_illustrator
+ON card_illustrators(illustrator_id);
 
 CREATE INDEX IF NOT EXISTS idx_raw_price_card_checked ON raw_price_records(card_id, checked_at);
 CREATE INDEX IF NOT EXISTS idx_graded_price_card_grade ON graded_price_records(card_id, grading_company, grade);
@@ -183,4 +226,18 @@ AFTER UPDATE ON set_catalog
 FOR EACH ROW
 BEGIN
     UPDATE set_catalog SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_pokedex_updated_at
+AFTER UPDATE ON pokedex
+FOR EACH ROW
+BEGIN
+    UPDATE pokedex SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_illustrators_updated_at
+AFTER UPDATE ON illustrators
+FOR EACH ROW
+BEGIN
+    UPDATE illustrators SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
 END;
