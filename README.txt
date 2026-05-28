@@ -50,6 +50,10 @@ Later Phases
 - Pricing refresh jobs and historical price charts.
 - Sale priority recommendations based on margin, demand, and grading EV.
 
+Modeling Notes
+
+Grading expected value research lives in modeling/grading_ev/. That folder holds the current grading model assumptions, likely future tables, and the Houndoom case-study template.
+
 Development Notes
 
 This repository starts as a local workspace for planning and building the tool. The preferred first implementation should be easy to run on Windows, use a local database, and keep the earliest version focused on reliable manual workflows before adding marketplace automation.
