@@ -66,6 +66,14 @@ def main() -> None:
             "SELECT COUNT(*) FROM cards WHERE set_catalog_id IS NOT NULL"
         ).fetchone()[0]
         total_card_count = conn.execute("SELECT COUNT(*) FROM cards").fetchone()[0]
+        population_snapshot_counts = conn.execute(
+            """
+            SELECT grading_company, COUNT(*)
+            FROM grade_population_snapshots
+            GROUP BY grading_company
+            ORDER BY grading_company
+            """
+        ).fetchall()
 
     print("Tables:")
     for (name,) in tables:
@@ -97,6 +105,12 @@ def main() -> None:
         print("- No set catalog rows imported yet")
     for source_region, count in set_catalog_counts:
         print(f"- {source_region}: {count}")
+
+    print("\nPopulation snapshot counts:")
+    if not population_snapshot_counts:
+        print("- No population snapshots recorded yet")
+    for grading_company, count in population_snapshot_counts:
+        print(f"- {grading_company}: {count}")
 
 
 if __name__ == "__main__":

@@ -191,12 +191,47 @@ CREATE TABLE IF NOT EXISTS grading_ev_runs (
     FOREIGN KEY (grading_profile_id) REFERENCES grading_profiles(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS grade_population_snapshots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    card_id INTEGER NOT NULL,
+    grading_company TEXT NOT NULL,
+    source_name TEXT NOT NULL,
+    source_url TEXT,
+    snapshot_label TEXT,
+    checked_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    population_total INTEGER NOT NULL CHECK (population_total >= 0),
+    gem_threshold_grade TEXT,
+    gem_count INTEGER CHECK (gem_count IS NULL OR gem_count >= 0),
+    gem_rate REAL CHECK (gem_rate IS NULL OR (gem_rate >= 0 AND gem_rate <= 1)),
+    ten_plus_count INTEGER CHECK (ten_plus_count IS NULL OR ten_plus_count >= 0),
+    ten_plus_rate REAL CHECK (ten_plus_rate IS NULL OR (ten_plus_rate >= 0 AND ten_plus_rate <= 1)),
+    exact_card_data INTEGER NOT NULL DEFAULT 1 CHECK (exact_card_data IN (0, 1)),
+    notes TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE,
+    UNIQUE (card_id, grading_company, source_name, snapshot_label, checked_at)
+);
+
+CREATE TABLE IF NOT EXISTS grade_population_snapshot_rows (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    snapshot_id INTEGER NOT NULL,
+    grade_label TEXT NOT NULL,
+    population_count INTEGER NOT NULL CHECK (population_count >= 0),
+    rate REAL CHECK (rate IS NULL OR (rate >= 0 AND rate <= 1)),
+    higher_count INTEGER CHECK (higher_count IS NULL OR higher_count >= 0),
+    higher_rate REAL CHECK (higher_rate IS NULL OR (higher_rate >= 0 AND higher_rate <= 1)),
+    notes TEXT,
+    FOREIGN KEY (snapshot_id) REFERENCES grade_population_snapshots(id) ON DELETE CASCADE,
+    UNIQUE (snapshot_id, grade_label)
+);
+
 CREATE INDEX IF NOT EXISTS idx_cards_search ON cards(name, set_name, card_number, language);
 CREATE INDEX IF NOT EXISTS idx_cards_sale_status ON cards(sale_status);
 CREATE INDEX IF NOT EXISTS idx_cards_set_catalog_id ON cards(set_catalog_id);
 CREATE INDEX IF NOT EXISTS idx_cards_pokedex_id ON cards(pokedex_id);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_cards_set_number_language
-ON cards(set_code, card_number, language);
+DROP INDEX IF EXISTS idx_cards_set_number_language;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_cards_set_number_language_tcgcollector
+ON cards(set_code, card_number, language, tcgcollector_card_id);
 CREATE INDEX IF NOT EXISTS idx_set_catalog_lookup
 ON set_catalog(source_region, set_name, set_code);
 CREATE INDEX IF NOT EXISTS idx_set_catalog_language
@@ -211,6 +246,10 @@ ON card_illustrators(illustrator_id);
 CREATE INDEX IF NOT EXISTS idx_raw_price_card_checked ON raw_price_records(card_id, checked_at);
 CREATE INDEX IF NOT EXISTS idx_graded_price_card_grade ON graded_price_records(card_id, grading_company, grade);
 CREATE INDEX IF NOT EXISTS idx_ev_runs_card ON grading_ev_runs(card_id, calculated_at);
+CREATE INDEX IF NOT EXISTS idx_grade_population_snapshots_card
+ON grade_population_snapshots(card_id, grading_company, checked_at);
+CREATE INDEX IF NOT EXISTS idx_grade_population_rows_snapshot
+ON grade_population_snapshot_rows(snapshot_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_card_images_card_path_role
 ON card_images(card_id, image_path, image_role);
 

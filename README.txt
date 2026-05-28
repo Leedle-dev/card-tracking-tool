@@ -84,6 +84,7 @@ Initial database coverage:
 - Marketplace sources.
 - Raw price records.
 - Graded price records.
+- Grading population snapshots and per-grade population rows.
 - Grading fee profiles.
 - Grading EV assumptions.
 - Saved grading EV calculation runs.
@@ -101,6 +102,14 @@ Gem Pack Vol. 5 card numbers are stored in the format "0101/07". The first two d
 To inspect imported cards:
 
 C:\Users\Lee\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe scripts\list_cards.py Pikachu
+
+To seed the current manual Beckett population snapshots:
+
+C:\Users\Lee\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe scripts\seed_population_snapshots.py
+
+To inspect recorded grading population snapshots:
+
+C:\Users\Lee\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe scripts\list_population_snapshots.py
 
 To fetch TCGcollector set catalogs for International, Japanese, and Simplified Chinese sets:
 
