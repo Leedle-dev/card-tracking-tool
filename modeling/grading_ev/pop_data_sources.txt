@@ -104,6 +104,19 @@ Japanese Houndoom, Night Wanderer 066/064
   - CGC 9: 599
   - This strongly supports the working assumption that Japanese print quality / grade outcomes are much stronger than English for this card.
 
+- Beckett / BGS population report supplied from public GemRate-style table:
+  - Set: 2024 Pokemon Scarlet and Violet Enhanced Expansion Pack Night Wanderer Japanese
+  - Player/card: Houndoom AR
+  - Card number: 066
+  - BGS total: 105
+  - BGS 7.5: 1, 1.0%
+  - BGS 9: 6, 5.7%
+  - BGS 9.5 Gem Mint: 77, 73.3%
+  - BGS 10 Pristine: 19, 18.1%
+  - BGS 10 Black Label: 2, 1.9%
+  - BGS 9.5 or higher: 98, 93.3%
+  - Working note: this is a strong support point for using Japanese BGS grade rates as the closest available prior for Simplified Chinese copies when Chinese population data is sparse.
+
 Simplified Chinese Houndoom, Gem Pack Vol. 5 0807/07
 
 - GemRate:
