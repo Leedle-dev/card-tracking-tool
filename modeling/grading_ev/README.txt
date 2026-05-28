@@ -61,6 +61,8 @@ Beckett should be modeled with distinct grade outcomes, especially:
 
 Black Label should not be blended with ordinary BGS 10 outcomes. It has a different rarity and market behavior.
 
+When calculating Beckett gem rates, use BGS 9.5 or higher as the gem threshold. BGS 10 Pristine and BGS Black Label 10 should still remain separate upside outcomes inside the EV model.
+
 Working Grade Difficulty Hierarchy
 
 This hierarchy is for modeling how difficult it is for a submit-worthy card to hit each grade. It is not a resale price hierarchy, cost hierarchy, or universal market preference ranking.

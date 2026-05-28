@@ -19,6 +19,7 @@ Source Strategy
    - Public pages expose useful PSA set and card-level data through indexed pages.
    - Partner API exists for unified PSA, Beckett/BGS, SGC, and CGC population data, but it appears to be commercial / partner access rather than a free public API.
    - Useful for grade-rate and trend context when public pages are indexed.
+   - Important Beckett convention: GemRate / BGS gem rate should be treated as BGS 9.5 or higher.
    - Treat GemRate as the preferred analytical source if access becomes affordable or if public pages are enough for a card.
 
 2. PriceCharting
@@ -69,6 +70,19 @@ English Houndoom, Shrouded Fable 066/064
   - CGC 9: 117
   - PriceCharting notes monthly updates and folds half grades into nearest whole grade.
   - Difference from GemRate is expected because the sources update differently and may use slightly different category handling.
+
+- Beckett / BGS population report supplied from public GemRate-style table:
+  - Set: 2024 Pokemon Scarlet and Violet Shrouded Fable
+  - Player/card: Houndoom IR
+  - Card number: 066
+  - BGS total: 140
+  - BGS 8.5: 19, 13.6%
+  - BGS 9: 72, 51.4%
+  - BGS 9.5 Gem Mint: 46, 32.9%
+  - BGS 10 Pristine: 2, 1.4%
+  - BGS 10 Black Label: 0, 0%
+  - BGS 9.5 or higher: 48, 34.3%
+  - Working note: for Beckett, gem rate is 9.5+ rather than 10-only.
 
 Japanese Houndoom, Night Wanderer 066/064
 
