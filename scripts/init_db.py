@@ -91,6 +91,26 @@ def parse_release_year(release_date_text: str | None) -> int | None:
 
 
 def pre_schema_migrations(conn: sqlite3.Connection) -> None:
+    pokedex_columns = column_names(conn, "pokedex")
+    if pokedex_columns and "variant_name" not in pokedex_columns:
+        pokedex_count = conn.execute("SELECT COUNT(*) FROM pokedex").fetchone()[0]
+        if pokedex_count == 0:
+            conn.execute("DROP TABLE pokedex")
+        else:
+            conn.execute("ALTER TABLE pokedex ADD COLUMN variant_name TEXT")
+            conn.execute("ALTER TABLE pokedex ADD COLUMN form_name TEXT")
+            conn.execute("ALTER TABLE pokedex ADD COLUMN source_slug TEXT")
+    elif pokedex_columns:
+        unique_indexes = [
+            row
+            for row in conn.execute("PRAGMA index_list(pokedex)").fetchall()
+            if row[2]
+        ]
+        if len(unique_indexes) > 1:
+            pokedex_count = conn.execute("SELECT COUNT(*) FROM pokedex").fetchone()[0]
+            if pokedex_count == 0:
+                conn.execute("DROP TABLE pokedex")
+
     card_columns = column_names(conn, "cards")
     card_columns_to_add = {
         "set_catalog_id": "INTEGER",

@@ -36,10 +36,14 @@ CREATE TABLE IF NOT EXISTS cards (
 
 CREATE TABLE IF NOT EXISTS pokedex (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    pokedex_number INTEGER NOT NULL UNIQUE,
-    pokemon_name TEXT NOT NULL UNIQUE,
+    pokedex_number INTEGER NOT NULL,
+    pokemon_name TEXT NOT NULL,
+    variant_name TEXT,
+    form_name TEXT,
+    source_slug TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (source_slug)
 );
 
 CREATE TABLE IF NOT EXISTS card_images (
@@ -311,7 +315,7 @@ ON set_catalog(source_region, set_name, set_code);
 CREATE INDEX IF NOT EXISTS idx_set_catalog_language
 ON set_catalog(language);
 CREATE INDEX IF NOT EXISTS idx_pokedex_name
-ON pokedex(pokemon_name);
+ON pokedex(pokemon_name, variant_name);
 CREATE INDEX IF NOT EXISTS idx_card_illustrators_card
 ON card_illustrators(card_id);
 CREATE INDEX IF NOT EXISTS idx_card_illustrators_illustrator

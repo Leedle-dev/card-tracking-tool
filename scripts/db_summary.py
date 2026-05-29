@@ -69,6 +69,13 @@ def main() -> None:
             "SELECT COUNT(*) FROM cards WHERE set_catalog_id IS NOT NULL"
         ).fetchone()[0]
         total_card_count = conn.execute("SELECT COUNT(*) FROM cards").fetchone()[0]
+        pokedex_count = conn.execute("SELECT COUNT(*) FROM pokedex").fetchone()[0]
+        pokedex_variant_count = conn.execute(
+            "SELECT COUNT(*) FROM pokedex WHERE variant_name IS NOT NULL"
+        ).fetchone()[0]
+        cards_with_pokedex_count = conn.execute(
+            "SELECT COUNT(*) FROM cards WHERE pokedex_id IS NOT NULL"
+        ).fetchone()[0]
         population_snapshot_counts = conn.execute(
             """
             SELECT grading_company, COUNT(*)
@@ -110,6 +117,7 @@ def main() -> None:
 
     print("\nCard counts:")
     print(f"- Linked to set catalog: {linked_card_count}/{total_card_count}")
+    print(f"- Linked to Pokedex: {cards_with_pokedex_count}/{total_card_count}")
     if not card_counts:
         print("- No cards imported yet")
     for set_code, set_name, language, count in card_counts:
@@ -140,6 +148,10 @@ def main() -> None:
     print("\nGrade rate reference counts:")
     print(f"- Data rows: {grade_rate_reference_count}")
     print(f"- Filter groups: {grade_rate_group_count}")
+
+    print("\nPokedex counts:")
+    print(f"- Rows: {pokedex_count}")
+    print(f"- Variant rows: {pokedex_variant_count}")
 
 
 if __name__ == "__main__":

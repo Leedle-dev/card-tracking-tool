@@ -103,6 +103,14 @@ To inspect imported cards:
 
 C:\Users\Lee\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe scripts\list_cards.py Pikachu
 
+To import or refresh the local Pokedex from PokeAPI and link cards to pokedex_id:
+
+C:\Users\Lee\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe scripts\import_pokedex.py
+
+To relink cards to the existing local Pokedex without refetching:
+
+C:\Users\Lee\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe scripts\import_pokedex.py --link-only
+
 To seed the current manual Beckett population snapshots:
 
 C:\Users\Lee\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe scripts\seed_population_snapshots.py
