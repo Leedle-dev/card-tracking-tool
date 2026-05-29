@@ -122,8 +122,6 @@ def ensure_schema_columns(conn: sqlite3.Connection) -> None:
         "set_catalog_id": "INTEGER",
         "pokedex_id": "INTEGER",
         "pokemon_name": "TEXT",
-        "pokemon_index": "INTEGER",
-        "variant_code": "TEXT",
         "holo_pattern": "TEXT",
         "source_sequence": "INTEGER",
         "tcgcollector_card_id": "INTEGER",

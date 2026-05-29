@@ -66,6 +66,36 @@ LANGUAGE_BY_REGION = {
     "s-chinese": "Simplified Chinese",
 }
 
+CARD_COLUMNS_WITHOUT_LEGACY_IDENTITY = [
+    "id",
+    "set_catalog_id",
+    "pokedex_id",
+    "name",
+    "game",
+    "set_name",
+    "set_code",
+    "card_number",
+    "pokemon_name",
+    "rarity",
+    "holo_pattern",
+    "source_sequence",
+    "tcgcollector_card_id",
+    "card_detail_url",
+    "language",
+    "region",
+    "release_year",
+    "is_chinese_exclusive",
+    "condition",
+    "quantity",
+    "cost_basis_cents",
+    "acquisition_date",
+    "sale_status",
+    "notes",
+    "primary_image_path",
+    "created_at",
+    "updated_at",
+]
+
 
 def table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
     row = conn.execute(
@@ -88,6 +118,62 @@ def parse_release_year(release_date_text: str | None) -> int | None:
         return datetime.strptime(release_date_text, "%b %d, %Y").year
     except ValueError:
         return None
+
+
+def rebuild_cards_without_legacy_identity_columns(conn: sqlite3.Connection) -> None:
+    card_columns = column_names(conn, "cards")
+    if not {"pokemon_index", "variant_code"} & card_columns:
+        return
+
+    conn.execute("PRAGMA foreign_keys = OFF")
+    try:
+        conn.execute(
+            """
+            CREATE TABLE cards_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                set_catalog_id INTEGER,
+                pokedex_id INTEGER,
+                name TEXT NOT NULL,
+                game TEXT NOT NULL DEFAULT 'Pokemon',
+                set_name TEXT,
+                set_code TEXT,
+                card_number TEXT,
+                pokemon_name TEXT,
+                rarity TEXT,
+                holo_pattern TEXT,
+                source_sequence INTEGER,
+                tcgcollector_card_id INTEGER,
+                card_detail_url TEXT,
+                language TEXT NOT NULL DEFAULT 'Simplified Chinese',
+                region TEXT,
+                release_year INTEGER,
+                is_chinese_exclusive INTEGER NOT NULL DEFAULT 0 CHECK (is_chinese_exclusive IN (0, 1)),
+                condition TEXT,
+                quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity >= 0),
+                cost_basis_cents INTEGER NOT NULL DEFAULT 0 CHECK (cost_basis_cents >= 0),
+                acquisition_date TEXT,
+                sale_status TEXT NOT NULL DEFAULT 'inventory',
+                notes TEXT,
+                primary_image_path TEXT,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (set_catalog_id) REFERENCES set_catalog(id),
+                FOREIGN KEY (pokedex_id) REFERENCES pokedex(id)
+            )
+            """
+        )
+        columns = ", ".join(CARD_COLUMNS_WITHOUT_LEGACY_IDENTITY)
+        conn.execute(
+            f"""
+            INSERT INTO cards_new ({columns})
+            SELECT {columns}
+            FROM cards
+            """
+        )
+        conn.execute("DROP TABLE cards")
+        conn.execute("ALTER TABLE cards_new RENAME TO cards")
+    finally:
+        conn.execute("PRAGMA foreign_keys = ON")
 
 
 def pre_schema_migrations(conn: sqlite3.Connection) -> None:
@@ -119,6 +205,8 @@ def pre_schema_migrations(conn: sqlite3.Connection) -> None:
     for column, column_type in card_columns_to_add.items():
         if card_columns and column not in card_columns:
             conn.execute(f"ALTER TABLE cards ADD COLUMN {column} {column_type}")
+
+    rebuild_cards_without_legacy_identity_columns(conn)
 
     set_catalog_columns = column_names(conn, "set_catalog")
     set_catalog_columns_to_add = {

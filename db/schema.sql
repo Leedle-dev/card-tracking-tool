@@ -10,8 +10,6 @@ CREATE TABLE IF NOT EXISTS cards (
     set_code TEXT,
     card_number TEXT,
     pokemon_name TEXT,
-    pokemon_index INTEGER,
-    variant_code TEXT,
     rarity TEXT,
     holo_pattern TEXT,
     source_sequence INTEGER,
