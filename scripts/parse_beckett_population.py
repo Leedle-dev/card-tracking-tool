@@ -42,7 +42,10 @@ def split_row(row: str) -> list[str]:
     return re.split(r"\s{2,}", row.strip())
 
 
-def parse_beckett_population_row(row: str) -> dict[str, object]:
+def parse_beckett_population_row(
+    row: str,
+    tcgcollector_set_id: int | None = None,
+) -> dict[str, object]:
     parts = split_row(row)
     if len(parts) != 26:
         raise ValueError(
@@ -78,6 +81,7 @@ def parse_beckett_population_row(row: str) -> dict[str, object]:
     displayed_population_count = sum(row["population_count"] for row in grade_rows)
 
     return {
+        "tcgcollector_set_id": tcgcollector_set_id,
         "player": player,
         "card_number": card_number,
         "population_total": total,
@@ -93,13 +97,21 @@ def main() -> None:
         description="Parse one tab-delimited Beckett population table row."
     )
     parser.add_argument("--sample", action="store_true", help="Parse the built-in sample row.")
+    parser.add_argument(
+        "--tcgcollector-set-id",
+        type=int,
+        help="TCGcollector set ID for the card's source set.",
+    )
     parser.add_argument("row", nargs="?", help="One Beckett population row.")
     args = parser.parse_args()
 
     row = SAMPLE_ROW if args.sample else args.row
     if row is None:
         row = sys.stdin.read()
-    parsed = parse_beckett_population_row(row)
+    parsed = parse_beckett_population_row(
+        row,
+        tcgcollector_set_id=args.tcgcollector_set_id,
+    )
     print(json.dumps(parsed, indent=2))
 
 
