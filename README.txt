@@ -19,7 +19,7 @@ Version 1 Roadmap
 
 1. Local Inventory Database
    - Add, edit, delete, and search cards.
-   - Track card name, set, card number, language, condition, quantity, cost basis, and notes.
+   - Track card identity, set, card number, language, inventory status, quantity, cost basis, and notes.
    - Store card images locally.
 
 2. Manual Pricing Records

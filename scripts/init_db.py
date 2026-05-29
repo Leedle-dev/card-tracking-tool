@@ -66,7 +66,7 @@ LANGUAGE_BY_REGION = {
     "s-chinese": "Simplified Chinese",
 }
 
-CARD_COLUMNS_WITHOUT_LEGACY_IDENTITY = [
+ACTIVE_CARD_COLUMNS = [
     "id",
     "set_catalog_id",
     "pokedex_id",
@@ -84,16 +84,19 @@ CARD_COLUMNS_WITHOUT_LEGACY_IDENTITY = [
     "language",
     "region",
     "release_year",
-    "is_chinese_exclusive",
+    "is_regional_exclusive",
+    "notes",
+    "primary_image_path",
+    "created_at",
+    "updated_at",
+]
+
+INVENTORY_COLUMNS_MOVED_FROM_CARDS = [
     "condition",
     "quantity",
     "cost_basis_cents",
     "acquisition_date",
     "sale_status",
-    "notes",
-    "primary_image_path",
-    "created_at",
-    "updated_at",
 ]
 
 
@@ -120,13 +123,44 @@ def parse_release_year(release_date_text: str | None) -> int | None:
         return None
 
 
-def rebuild_cards_without_legacy_identity_columns(conn: sqlite3.Connection) -> None:
+def create_card_inventory_table(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS card_inventory (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            card_id INTEGER NOT NULL UNIQUE,
+            condition TEXT,
+            quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity >= 0),
+            cost_basis_cents INTEGER NOT NULL DEFAULT 0 CHECK (cost_basis_cents >= 0),
+            acquisition_date TEXT,
+            sale_status TEXT NOT NULL DEFAULT 'inventory',
+            notes TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE
+        )
+        """
+    )
+
+
+def rebuild_cards_for_current_shape(conn: sqlite3.Connection) -> None:
     card_columns = column_names(conn, "cards")
-    if not {"pokemon_index", "variant_code"} & card_columns:
+    legacy_columns = {
+        "pokemon_index",
+        "variant_code",
+        "is_chinese_exclusive",
+        *INVENTORY_COLUMNS_MOVED_FROM_CARDS,
+    }
+    needs_rebuild = bool(legacy_columns & card_columns) or (
+        card_columns and "is_regional_exclusive" not in card_columns
+    )
+    if not needs_rebuild:
         return
 
+    create_card_inventory_table(conn)
     conn.execute("PRAGMA foreign_keys = OFF")
     try:
+        conn.execute("DROP TABLE IF EXISTS cards_new")
         conn.execute(
             """
             CREATE TABLE cards_new (
@@ -147,12 +181,7 @@ def rebuild_cards_without_legacy_identity_columns(conn: sqlite3.Connection) -> N
                 language TEXT NOT NULL DEFAULT 'Simplified Chinese',
                 region TEXT,
                 release_year INTEGER,
-                is_chinese_exclusive INTEGER NOT NULL DEFAULT 0 CHECK (is_chinese_exclusive IN (0, 1)),
-                condition TEXT,
-                quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity >= 0),
-                cost_basis_cents INTEGER NOT NULL DEFAULT 0 CHECK (cost_basis_cents >= 0),
-                acquisition_date TEXT,
-                sale_status TEXT NOT NULL DEFAULT 'inventory',
+                is_regional_exclusive INTEGER NOT NULL DEFAULT 0 CHECK (is_regional_exclusive IN (0, 1)),
                 notes TEXT,
                 primary_image_path TEXT,
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -162,14 +191,86 @@ def rebuild_cards_without_legacy_identity_columns(conn: sqlite3.Connection) -> N
             )
             """
         )
-        columns = ", ".join(CARD_COLUMNS_WITHOUT_LEGACY_IDENTITY)
+        source_exclusive_column = (
+            "is_regional_exclusive"
+            if "is_regional_exclusive" in card_columns
+            else "is_chinese_exclusive"
+        )
+        select_columns = [
+            source_exclusive_column if column == "is_regional_exclusive" else column
+            for column in ACTIVE_CARD_COLUMNS
+        ]
+        columns = ", ".join(ACTIVE_CARD_COLUMNS)
+        select_clause = ", ".join(select_columns)
         conn.execute(
             f"""
             INSERT INTO cards_new ({columns})
-            SELECT {columns}
+            SELECT {select_clause}
             FROM cards
             """
         )
+        if set(INVENTORY_COLUMNS_MOVED_FROM_CARDS) & card_columns:
+            conn.execute(
+                """
+                INSERT INTO card_inventory (
+                    card_id,
+                    condition,
+                    quantity,
+                    cost_basis_cents,
+                    acquisition_date,
+                    sale_status
+                )
+                SELECT
+                    id,
+                    condition,
+                    quantity,
+                    cost_basis_cents,
+                    acquisition_date,
+                    sale_status
+                FROM cards
+                WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM card_inventory
+                    WHERE card_inventory.card_id = cards.id
+                )
+                """
+            )
+            conn.execute(
+                """
+                UPDATE card_inventory
+                SET
+                    condition = (
+                        SELECT cards.condition
+                        FROM cards
+                        WHERE cards.id = card_inventory.card_id
+                    ),
+                    quantity = (
+                        SELECT cards.quantity
+                        FROM cards
+                        WHERE cards.id = card_inventory.card_id
+                    ),
+                    cost_basis_cents = (
+                        SELECT cards.cost_basis_cents
+                        FROM cards
+                        WHERE cards.id = card_inventory.card_id
+                    ),
+                    acquisition_date = (
+                        SELECT cards.acquisition_date
+                        FROM cards
+                        WHERE cards.id = card_inventory.card_id
+                    ),
+                    sale_status = (
+                        SELECT cards.sale_status
+                        FROM cards
+                        WHERE cards.id = card_inventory.card_id
+                    )
+                WHERE EXISTS (
+                    SELECT 1
+                    FROM cards
+                    WHERE cards.id = card_inventory.card_id
+                )
+                """
+            )
         conn.execute("DROP TABLE cards")
         conn.execute("ALTER TABLE cards_new RENAME TO cards")
     finally:
@@ -206,7 +307,7 @@ def pre_schema_migrations(conn: sqlite3.Connection) -> None:
         if card_columns and column not in card_columns:
             conn.execute(f"ALTER TABLE cards ADD COLUMN {column} {column_type}")
 
-    rebuild_cards_without_legacy_identity_columns(conn)
+    rebuild_cards_for_current_shape(conn)
 
     set_catalog_columns = column_names(conn, "set_catalog")
     set_catalog_columns_to_add = {
@@ -291,6 +392,24 @@ def backfill_card_set_catalog_links(conn: sqlite3.Connection) -> None:
             )
 
 
+def backfill_card_inventory(conn: sqlite3.Connection) -> None:
+    if not table_exists(conn, "cards") or not table_exists(conn, "card_inventory"):
+        return
+
+    conn.execute(
+        """
+        INSERT INTO card_inventory (card_id, sale_status)
+        SELECT id, 'reference'
+        FROM cards
+        WHERE NOT EXISTS (
+            SELECT 1
+            FROM card_inventory
+            WHERE card_inventory.card_id = cards.id
+        )
+        """
+    )
+
+
 def backfill_grading_profile_company_links(conn: sqlite3.Connection) -> None:
     if not table_exists(conn, "grading_profiles") or not table_exists(conn, "grading_companies"):
         return
@@ -319,6 +438,7 @@ def main() -> None:
         conn.executescript(schema)
         backfill_set_catalog(conn)
         backfill_card_set_catalog_links(conn)
+        backfill_card_inventory(conn)
         conn.executemany(
             """
             INSERT INTO marketplace_sources (name, website_url, notes)

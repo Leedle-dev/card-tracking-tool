@@ -397,11 +397,10 @@ def import_card(
             language,
             region,
             release_year,
-            sale_status,
             notes,
             primary_image_path
         )
-        VALUES (?, ?, 'Pokemon', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'reference', ?, ?)
+        VALUES (?, ?, 'Pokemon', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             set_row["id"],
@@ -423,6 +422,16 @@ def import_card(
     )
 
     card_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+    conn.execute(
+        """
+        INSERT INTO card_inventory (card_id, sale_status)
+        VALUES (?, 'reference')
+        ON CONFLICT(card_id) DO UPDATE SET
+            sale_status = excluded.sale_status
+        """,
+        (card_id,),
+    )
 
     conn.execute(
         """

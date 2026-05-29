@@ -76,6 +76,17 @@ def main() -> None:
         cards_with_pokedex_count = conn.execute(
             "SELECT COUNT(*) FROM cards WHERE pokedex_id IS NOT NULL"
         ).fetchone()[0]
+        inventory_count = conn.execute(
+            "SELECT COUNT(*) FROM card_inventory"
+        ).fetchone()[0]
+        inventory_status_counts = conn.execute(
+            """
+            SELECT sale_status, COUNT(*)
+            FROM card_inventory
+            GROUP BY sale_status
+            ORDER BY sale_status
+            """
+        ).fetchall()
         population_snapshot_counts = conn.execute(
             """
             SELECT grading_company, COUNT(*)
@@ -118,10 +129,17 @@ def main() -> None:
     print("\nCard counts:")
     print(f"- Linked to set catalog: {linked_card_count}/{total_card_count}")
     print(f"- Linked to Pokedex: {cards_with_pokedex_count}/{total_card_count}")
+    print(f"- Inventory rows: {inventory_count}/{total_card_count}")
     if not card_counts:
         print("- No cards imported yet")
     for set_code, set_name, language, count in card_counts:
         print(f"- {set_code} | {set_name} | {language}: {count}")
+
+    print("\nInventory status counts:")
+    if not inventory_status_counts:
+        print("- No inventory rows recorded yet")
+    for sale_status, count in inventory_status_counts:
+        print(f"- {sale_status}: {count}")
 
     print("\nLocal image counts:")
     if not image_counts:

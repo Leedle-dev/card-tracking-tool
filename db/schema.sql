@@ -18,18 +18,27 @@ CREATE TABLE IF NOT EXISTS cards (
     language TEXT NOT NULL DEFAULT 'Simplified Chinese',
     region TEXT,
     release_year INTEGER,
-    is_chinese_exclusive INTEGER NOT NULL DEFAULT 0 CHECK (is_chinese_exclusive IN (0, 1)),
-    condition TEXT,
-    quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity >= 0),
-    cost_basis_cents INTEGER NOT NULL DEFAULT 0 CHECK (cost_basis_cents >= 0),
-    acquisition_date TEXT,
-    sale_status TEXT NOT NULL DEFAULT 'inventory',
+    is_regional_exclusive INTEGER NOT NULL DEFAULT 0 CHECK (is_regional_exclusive IN (0, 1)),
     notes TEXT,
     primary_image_path TEXT,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (set_catalog_id) REFERENCES set_catalog(id),
     FOREIGN KEY (pokedex_id) REFERENCES pokedex(id)
+);
+
+CREATE TABLE IF NOT EXISTS card_inventory (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    card_id INTEGER NOT NULL UNIQUE,
+    condition TEXT,
+    quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity >= 0),
+    cost_basis_cents INTEGER NOT NULL DEFAULT 0 CHECK (cost_basis_cents >= 0),
+    acquisition_date TEXT,
+    sale_status TEXT NOT NULL DEFAULT 'inventory',
+    notes TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS pokedex (
@@ -302,9 +311,11 @@ CREATE TABLE IF NOT EXISTS grade_rate_reference_groups (
 );
 
 CREATE INDEX IF NOT EXISTS idx_cards_search ON cards(name, set_name, card_number, language);
-CREATE INDEX IF NOT EXISTS idx_cards_sale_status ON cards(sale_status);
+DROP INDEX IF EXISTS idx_cards_sale_status;
 CREATE INDEX IF NOT EXISTS idx_cards_set_catalog_id ON cards(set_catalog_id);
 CREATE INDEX IF NOT EXISTS idx_cards_pokedex_id ON cards(pokedex_id);
+CREATE INDEX IF NOT EXISTS idx_card_inventory_sale_status ON card_inventory(sale_status);
+CREATE INDEX IF NOT EXISTS idx_card_inventory_card_id ON card_inventory(card_id);
 DROP INDEX IF EXISTS idx_cards_set_number_language;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_cards_set_number_language_tcgcollector
 ON cards(set_code, card_number, language, tcgcollector_card_id);
@@ -342,6 +353,13 @@ AFTER UPDATE ON cards
 FOR EACH ROW
 BEGIN
     UPDATE cards SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_card_inventory_updated_at
+AFTER UPDATE ON card_inventory
+FOR EACH ROW
+BEGIN
+    UPDATE card_inventory SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
 END;
 
 CREATE TRIGGER IF NOT EXISTS trg_set_catalog_updated_at
