@@ -74,6 +74,16 @@ CREATE TABLE IF NOT EXISTS marketplace_sources (
     notes TEXT
 );
 
+CREATE TABLE IF NOT EXISTS grading_companies (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    abbreviation TEXT NOT NULL UNIQUE,
+    website_url TEXT,
+    notes TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS set_catalog (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     source_name TEXT NOT NULL DEFAULT 'TCGcollector',
@@ -152,6 +162,7 @@ CREATE TABLE IF NOT EXISTS graded_price_records (
 CREATE TABLE IF NOT EXISTS grading_profiles (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE,
+    grading_company_id INTEGER,
     grading_company TEXT NOT NULL,
     service_level TEXT,
     grading_fee_cents INTEGER NOT NULL DEFAULT 0 CHECK (grading_fee_cents >= 0),
@@ -159,7 +170,8 @@ CREATE TABLE IF NOT EXISTS grading_profiles (
     return_shipping_cents INTEGER NOT NULL DEFAULT 0 CHECK (return_shipping_cents >= 0),
     marketplace_fee_rate REAL NOT NULL DEFAULT 0.13 CHECK (marketplace_fee_rate >= 0),
     notes TEXT,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (grading_company_id) REFERENCES grading_companies(id)
 );
 
 CREATE TABLE IF NOT EXISTS grading_ev_assumptions (
@@ -225,6 +237,68 @@ CREATE TABLE IF NOT EXISTS grade_population_snapshot_rows (
     UNIQUE (snapshot_id, grade_label)
 );
 
+CREATE TABLE IF NOT EXISTS grade_rate_reference_data (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    grading_company_id INTEGER NOT NULL,
+    source_name TEXT,
+    source_url TEXT,
+    source_card_id INTEGER,
+    source_snapshot_id INTEGER,
+    source_card_name TEXT,
+    source_set_name TEXT,
+    source_set_code TEXT,
+    release_year INTEGER,
+    region TEXT,
+    language TEXT,
+    print_family TEXT,
+    card_category TEXT,
+    rarity TEXT,
+    grade_label TEXT NOT NULL,
+    population_count INTEGER CHECK (population_count IS NULL OR population_count >= 0),
+    population_total INTEGER CHECK (population_total IS NULL OR population_total >= 0),
+    probability REAL NOT NULL CHECK (probability >= 0 AND probability <= 1),
+    exact_card_data INTEGER NOT NULL DEFAULT 0 CHECK (exact_card_data IN (0, 1)),
+    confidence REAL NOT NULL DEFAULT 1.0 CHECK (confidence >= 0 AND confidence <= 1),
+    checked_at TEXT,
+    notes TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (grading_company_id) REFERENCES grading_companies(id),
+    FOREIGN KEY (source_card_id) REFERENCES cards(id) ON DELETE SET NULL,
+    FOREIGN KEY (source_snapshot_id) REFERENCES grade_population_snapshots(id) ON DELETE SET NULL,
+    UNIQUE (
+        grading_company_id,
+        source_name,
+        source_card_name,
+        source_set_name,
+        source_set_code,
+        grade_label,
+        checked_at
+    )
+);
+
+CREATE TABLE IF NOT EXISTS grade_rate_reference_groups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    grading_company_id INTEGER NOT NULL,
+    min_release_year INTEGER,
+    max_release_year INTEGER,
+    region_filter TEXT,
+    language_filter TEXT,
+    print_family_filter TEXT,
+    card_category_filter TEXT,
+    rarity_filter TEXT,
+    min_population_total INTEGER NOT NULL DEFAULT 0 CHECK (min_population_total >= 0),
+    min_confidence REAL NOT NULL DEFAULT 0 CHECK (min_confidence >= 0 AND min_confidence <= 1),
+    include_exact_card_data INTEGER NOT NULL DEFAULT 1 CHECK (include_exact_card_data IN (0, 1)),
+    include_benchmark_data INTEGER NOT NULL DEFAULT 1 CHECK (include_benchmark_data IN (0, 1)),
+    aggregation_method TEXT NOT NULL DEFAULT 'population_weighted_average',
+    sample_limit INTEGER CHECK (sample_limit IS NULL OR sample_limit > 0),
+    notes TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (grading_company_id) REFERENCES grading_companies(id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_cards_search ON cards(name, set_name, card_number, language);
 CREATE INDEX IF NOT EXISTS idx_cards_sale_status ON cards(sale_status);
 CREATE INDEX IF NOT EXISTS idx_cards_set_catalog_id ON cards(set_catalog_id);
@@ -246,10 +320,18 @@ ON card_illustrators(illustrator_id);
 CREATE INDEX IF NOT EXISTS idx_raw_price_card_checked ON raw_price_records(card_id, checked_at);
 CREATE INDEX IF NOT EXISTS idx_graded_price_card_grade ON graded_price_records(card_id, grading_company, grade);
 CREATE INDEX IF NOT EXISTS idx_ev_runs_card ON grading_ev_runs(card_id, calculated_at);
+CREATE INDEX IF NOT EXISTS idx_grading_profiles_company
+ON grading_profiles(grading_company_id);
 CREATE INDEX IF NOT EXISTS idx_grade_population_snapshots_card
 ON grade_population_snapshots(card_id, grading_company, checked_at);
 CREATE INDEX IF NOT EXISTS idx_grade_population_rows_snapshot
 ON grade_population_snapshot_rows(snapshot_id);
+CREATE INDEX IF NOT EXISTS idx_grade_rate_reference_company
+ON grade_rate_reference_data(grading_company_id, grade_label);
+CREATE INDEX IF NOT EXISTS idx_grade_rate_reference_filters
+ON grade_rate_reference_data(release_year, region, language, print_family, card_category, rarity);
+CREATE INDEX IF NOT EXISTS idx_grade_rate_reference_groups_company
+ON grade_rate_reference_groups(grading_company_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_card_images_card_path_role
 ON card_images(card_id, image_path, image_role);
 
@@ -279,4 +361,18 @@ AFTER UPDATE ON illustrators
 FOR EACH ROW
 BEGIN
     UPDATE illustrators SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_grading_companies_updated_at
+AFTER UPDATE ON grading_companies
+FOR EACH ROW
+BEGIN
+    UPDATE grading_companies SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_grade_rate_reference_groups_updated_at
+AFTER UPDATE ON grade_rate_reference_groups
+FOR EACH ROW
+BEGIN
+    UPDATE grade_rate_reference_groups SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
 END;

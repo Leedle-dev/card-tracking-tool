@@ -78,10 +78,24 @@ This hierarchy is for modeling how difficult it is for a submit-worthy card to h
 
 Likely Future Tables
 
-- grade_population_snapshots
 - market_price_snapshots
 - grading_ev_scenarios
 - grading_ev_scenario_outputs
+
+Grade Rate Reference Data
+
+Manual population data should be stored as submitted reference data, not scraped on demand. Reference groups are saved filters over that data. They should not store simulated gem rates directly.
+
+Example reference group:
+
+- Grading company: BGS
+- Release years: 2023-present
+- Region/language: Japanese or Simplified Chinese
+- Rarity/category: Art Rare, Illustration Rare, Triple Rare, or similar modern art cards
+- Minimum population: 100
+- Aggregation method: population-weighted average, median, trimmed mean, random sample, or manually curated basket
+
+When an EV report runs, it should select qualifying grade-rate reference rows through the group filters, then calculate the actual grade probabilities at runtime.
 
 Near-Term Approach
 

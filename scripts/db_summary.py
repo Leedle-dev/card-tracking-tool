@@ -20,6 +20,9 @@ def main() -> None:
         profiles = conn.execute(
             "SELECT name, grading_company FROM grading_profiles ORDER BY name"
         ).fetchall()
+        grading_companies = conn.execute(
+            "SELECT abbreviation, name FROM grading_companies ORDER BY abbreviation"
+        ).fetchall()
         card_counts = conn.execute(
             """
             SELECT
@@ -80,6 +83,12 @@ def main() -> None:
         graded_price_count = conn.execute(
             "SELECT COUNT(*) FROM graded_price_records"
         ).fetchone()[0]
+        grade_rate_reference_count = conn.execute(
+            "SELECT COUNT(*) FROM grade_rate_reference_data"
+        ).fetchone()[0]
+        grade_rate_group_count = conn.execute(
+            "SELECT COUNT(*) FROM grade_rate_reference_groups"
+        ).fetchone()[0]
 
     print("Tables:")
     for (name,) in tables:
@@ -92,6 +101,12 @@ def main() -> None:
     print("\nGrading profiles:")
     for name, company in profiles:
         print(f"- {name} ({company})")
+
+    print("\nGrading companies:")
+    if not grading_companies:
+        print("- No grading companies seeded yet")
+    for abbreviation, name in grading_companies:
+        print(f"- {abbreviation}: {name}")
 
     print("\nCard counts:")
     print(f"- Linked to set catalog: {linked_card_count}/{total_card_count}")
@@ -121,6 +136,10 @@ def main() -> None:
     print("\nPrice record counts:")
     print(f"- Raw: {raw_price_count}")
     print(f"- Graded: {graded_price_count}")
+
+    print("\nGrade rate reference counts:")
+    print(f"- Data rows: {grade_rate_reference_count}")
+    print(f"- Filter groups: {grade_rate_group_count}")
 
 
 if __name__ == "__main__":

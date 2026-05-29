@@ -15,6 +15,27 @@ SOURCES = [
     ("Manual Comp", None, "Manually entered comparable sale or listing."),
 ]
 
+GRADING_COMPANIES = [
+    (
+        "Professional Sports Authenticator",
+        "PSA",
+        "https://www.psacard.com",
+        "Major grading company. PSA 10 is generally treated as gem mint.",
+    ),
+    (
+        "Beckett Grading Services",
+        "BGS",
+        "https://www.beckett.com/grading",
+        "Beckett grading company. BGS gem threshold is generally 9.5+.",
+    ),
+    (
+        "CGC Cards",
+        "CGC",
+        "https://www.cgccards.com",
+        "CGC grading company with Gem Mint 10 and Pristine 10 distinctions.",
+    ),
+]
+
 GRADING_PROFILES = [
     (
         "PSA Standard Placeholder",
@@ -88,6 +109,10 @@ def pre_schema_migrations(conn: sqlite3.Connection) -> None:
         if set_catalog_columns and column not in set_catalog_columns:
             conn.execute(f"ALTER TABLE set_catalog ADD COLUMN {column} {column_type}")
 
+    grading_profile_columns = column_names(conn, "grading_profiles")
+    if grading_profile_columns and "grading_company_id" not in grading_profile_columns:
+        conn.execute("ALTER TABLE grading_profiles ADD COLUMN grading_company_id INTEGER")
+
 
 def backfill_set_catalog(conn: sqlite3.Connection) -> None:
     if not table_exists(conn, "set_catalog"):
@@ -158,6 +183,24 @@ def backfill_card_set_catalog_links(conn: sqlite3.Connection) -> None:
             )
 
 
+def backfill_grading_profile_company_links(conn: sqlite3.Connection) -> None:
+    if not table_exists(conn, "grading_profiles") or not table_exists(conn, "grading_companies"):
+        return
+
+    conn.execute(
+        """
+        UPDATE grading_profiles
+        SET grading_company_id = (
+            SELECT gc.id
+            FROM grading_companies gc
+            WHERE gc.abbreviation = grading_profiles.grading_company
+            LIMIT 1
+        )
+        WHERE grading_company_id IS NULL
+        """
+    )
+
+
 def main() -> None:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     schema = SCHEMA_PATH.read_text(encoding="utf-8")
@@ -180,8 +223,20 @@ def main() -> None:
         )
         conn.executemany(
             """
+            INSERT INTO grading_companies (name, abbreviation, website_url, notes)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(abbreviation) DO UPDATE SET
+                name = excluded.name,
+                website_url = excluded.website_url,
+                notes = excluded.notes
+            """,
+            GRADING_COMPANIES,
+        )
+        conn.executemany(
+            """
             INSERT INTO grading_profiles (
                 name,
+                grading_company_id,
                 grading_company,
                 service_level,
                 grading_fee_cents,
@@ -190,11 +245,38 @@ def main() -> None:
                 marketplace_fee_rate,
                 notes
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (
+                ?,
+                (SELECT id FROM grading_companies WHERE abbreviation = ?),
+                ?, ?, ?, ?, ?, ?, ?
+            )
             ON CONFLICT(name) DO NOTHING
             """,
-            GRADING_PROFILES,
+            [
+                (
+                    name,
+                    grading_company,
+                    grading_company,
+                    service_level,
+                    grading_fee_cents,
+                    inbound_shipping_cents,
+                    return_shipping_cents,
+                    marketplace_fee_rate,
+                    notes,
+                )
+                for (
+                    name,
+                    grading_company,
+                    service_level,
+                    grading_fee_cents,
+                    inbound_shipping_cents,
+                    return_shipping_cents,
+                    marketplace_fee_rate,
+                    notes,
+                ) in GRADING_PROFILES
+            ],
         )
+        backfill_grading_profile_company_links(conn)
 
     print(f"Database initialized at {DB_PATH}")
 
