@@ -75,14 +75,15 @@ def parse_beckett_population_row(row: str) -> dict[str, object]:
         }
     )
 
-    visible_population_count = sum(row["population_count"] for row in grade_rows)
+    displayed_population_count = sum(row["population_count"] for row in grade_rows)
 
     return {
         "player": player,
         "card_number": card_number,
         "population_total": total,
-        "visible_population_count": visible_population_count,
-        "unlisted_population_count": total - visible_population_count,
+        "displayed_grade_floor": "BGS 7",
+        "displayed_population_count": displayed_population_count,
+        "below_displayed_grade_count": total - displayed_population_count,
         "grades": grade_rows,
     }
 
