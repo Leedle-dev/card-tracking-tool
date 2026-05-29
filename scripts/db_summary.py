@@ -26,35 +26,35 @@ def main() -> None:
         card_counts = conn.execute(
             """
             SELECT
-                COALESCE(sc.set_code, c.set_code),
-                COALESCE(sc.set_name, c.set_name),
-                COALESCE(sc.language, c.language),
+                sc.set_code,
+                sc.set_name,
+                sc.language,
                 COUNT(*)
             FROM cards c
-            LEFT JOIN set_catalog sc ON sc.id = c.set_catalog_id
+            JOIN set_catalog sc ON sc.id = c.set_catalog_id
             GROUP BY
-                COALESCE(sc.set_code, c.set_code),
-                COALESCE(sc.set_name, c.set_name),
-                COALESCE(sc.language, c.language)
+                sc.set_code,
+                sc.set_name,
+                sc.language
             ORDER BY 1, 3
             """
         ).fetchall()
         image_counts = conn.execute(
             """
             SELECT
-                COALESCE(sc.set_code, c.set_code),
-                COALESCE(sc.language, c.language),
+                sc.set_code,
+                sc.language,
                 COUNT(*)
             FROM card_images ci
             JOIN cards c ON c.id = ci.card_id
-            LEFT JOIN set_catalog sc ON sc.id = c.set_catalog_id
+            JOIN set_catalog sc ON sc.id = c.set_catalog_id
             WHERE ci.image_path LIKE 'data/card_images/%'
             GROUP BY
-                COALESCE(sc.set_code, c.set_code),
-                COALESCE(sc.language, c.language)
+                sc.set_code,
+                sc.language
             ORDER BY
-                COALESCE(sc.set_code, c.set_code),
-                COALESCE(sc.language, c.language)
+                sc.set_code,
+                sc.language
             """
         ).fetchall()
         set_catalog_counts = conn.execute(

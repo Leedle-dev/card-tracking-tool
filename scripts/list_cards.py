@@ -20,9 +20,9 @@ def main() -> None:
         rows = conn.execute(
             """
             SELECT
-                COALESCE(sc.language, c.language) AS language,
-                COALESCE(sc.set_name, c.set_name) AS set_name,
-                COALESCE(sc.set_code, c.set_code) AS set_code,
+                sc.language AS language,
+                sc.set_name AS set_name,
+                sc.set_code AS set_code,
                 card_number,
                 c.name,
                 c.rarity,
@@ -30,17 +30,17 @@ def main() -> None:
                 c.card_detail_url,
                 c.primary_image_path
             FROM cards c
-            LEFT JOIN set_catalog sc ON sc.id = c.set_catalog_id
+            JOIN set_catalog sc ON sc.id = c.set_catalog_id
             WHERE
-                (? = '' OR COALESCE(sc.set_code, c.set_code) = ?)
-                AND (? = '' OR COALESCE(sc.language, c.language) = ?)
+                (? = '' OR sc.set_code = ?)
+                AND (? = '' OR sc.language = ?)
                 AND (
                     ? = ''
                     OR c.card_number LIKE ?
                     OR c.name LIKE ?
                     OR c.rarity LIKE ?
-                    OR COALESCE(sc.set_name, c.set_name) LIKE ?
-                    OR COALESCE(sc.set_code, c.set_code) LIKE ?
+                    OR sc.set_name LIKE ?
+                    OR sc.set_code LIKE ?
                 )
             ORDER BY language, set_name, c.card_number
             LIMIT 50

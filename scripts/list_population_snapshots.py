@@ -19,9 +19,9 @@ def main() -> None:
             """
             SELECT
                 gps.grading_company,
-                COALESCE(sc.language, c.language) AS language,
-                COALESCE(sc.set_name, c.set_name) AS set_name,
-                COALESCE(sc.set_code, c.set_code) AS set_code,
+                sc.language AS language,
+                sc.set_name AS set_name,
+                sc.set_code AS set_code,
                 c.card_number,
                 c.name,
                 gps.snapshot_label,
@@ -33,13 +33,13 @@ def main() -> None:
                 ROUND(gps.ten_plus_rate * 100, 1) AS ten_plus_rate_pct
             FROM grade_population_snapshots gps
             JOIN cards c ON c.id = gps.card_id
-            LEFT JOIN set_catalog sc ON sc.id = c.set_catalog_id
+            JOIN set_catalog sc ON sc.id = c.set_catalog_id
             WHERE
                 ? = ''
                 OR c.name LIKE ?
                 OR gps.snapshot_label LIKE ?
-                OR COALESCE(sc.set_name, c.set_name) LIKE ?
-                OR COALESCE(sc.set_code, c.set_code) LIKE ?
+                OR sc.set_name LIKE ?
+                OR sc.set_code LIKE ?
             ORDER BY
                 gps.grading_company,
                 language,

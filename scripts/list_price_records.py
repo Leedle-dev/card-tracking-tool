@@ -23,9 +23,9 @@ def main() -> None:
             """
             SELECT
                 'RAW',
-                COALESCE(sc.language, c.language),
-                COALESCE(sc.set_name, c.set_name),
-                COALESCE(sc.set_code, c.set_code),
+                sc.language,
+                sc.set_name,
+                sc.set_code,
                 c.card_number,
                 c.name,
                 ms.name,
@@ -36,13 +36,13 @@ def main() -> None:
                 r.notes
             FROM raw_price_records r
             JOIN cards c ON c.id = r.card_id
-            LEFT JOIN set_catalog sc ON sc.id = c.set_catalog_id
+            JOIN set_catalog sc ON sc.id = c.set_catalog_id
             JOIN marketplace_sources ms ON ms.id = r.source_id
             WHERE
                 ? = ''
                 OR c.name LIKE ?
-                OR COALESCE(sc.set_name, c.set_name) LIKE ?
-                OR COALESCE(sc.set_code, c.set_code) LIKE ?
+                OR sc.set_name LIKE ?
+                OR sc.set_code LIKE ?
                 OR r.notes LIKE ?
             ORDER BY r.checked_at DESC, c.name
             """,
@@ -52,9 +52,9 @@ def main() -> None:
             """
             SELECT
                 'GRADED',
-                COALESCE(sc.language, c.language),
-                COALESCE(sc.set_name, c.set_name),
-                COALESCE(sc.set_code, c.set_code),
+                sc.language,
+                sc.set_name,
+                sc.set_code,
                 c.card_number,
                 c.name,
                 ms.name,
@@ -65,13 +65,13 @@ def main() -> None:
                 g.notes
             FROM graded_price_records g
             JOIN cards c ON c.id = g.card_id
-            LEFT JOIN set_catalog sc ON sc.id = c.set_catalog_id
+            JOIN set_catalog sc ON sc.id = c.set_catalog_id
             JOIN marketplace_sources ms ON ms.id = g.source_id
             WHERE
                 ? = ''
                 OR c.name LIKE ?
-                OR COALESCE(sc.set_name, c.set_name) LIKE ?
-                OR COALESCE(sc.set_code, c.set_code) LIKE ?
+                OR sc.set_name LIKE ?
+                OR sc.set_code LIKE ?
                 OR g.notes LIKE ?
             ORDER BY g.checked_at DESC, c.name, g.grading_company, g.grade
             """,

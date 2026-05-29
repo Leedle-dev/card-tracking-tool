@@ -6,8 +6,6 @@ CREATE TABLE IF NOT EXISTS cards (
     pokedex_id INTEGER,
     name TEXT NOT NULL,
     game TEXT NOT NULL DEFAULT 'Pokemon',
-    set_name TEXT,
-    set_code TEXT,
     card_number TEXT,
     pokemon_name TEXT,
     rarity TEXT,
@@ -15,9 +13,6 @@ CREATE TABLE IF NOT EXISTS cards (
     source_sequence INTEGER,
     tcgcollector_card_id INTEGER,
     card_detail_url TEXT,
-    language TEXT NOT NULL DEFAULT 'Simplified Chinese',
-    region TEXT,
-    release_year INTEGER,
     is_regional_exclusive INTEGER NOT NULL DEFAULT 0 CHECK (is_regional_exclusive IN (0, 1)),
     notes TEXT,
     primary_image_path TEXT,
@@ -310,15 +305,16 @@ CREATE TABLE IF NOT EXISTS grade_rate_reference_groups (
     FOREIGN KEY (grading_company_id) REFERENCES grading_companies(id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_cards_search ON cards(name, set_name, card_number, language);
+CREATE INDEX IF NOT EXISTS idx_cards_search ON cards(name, card_number);
 DROP INDEX IF EXISTS idx_cards_sale_status;
 CREATE INDEX IF NOT EXISTS idx_cards_set_catalog_id ON cards(set_catalog_id);
 CREATE INDEX IF NOT EXISTS idx_cards_pokedex_id ON cards(pokedex_id);
 CREATE INDEX IF NOT EXISTS idx_card_inventory_sale_status ON card_inventory(sale_status);
 CREATE INDEX IF NOT EXISTS idx_card_inventory_card_id ON card_inventory(card_id);
 DROP INDEX IF EXISTS idx_cards_set_number_language;
-CREATE UNIQUE INDEX IF NOT EXISTS idx_cards_set_number_language_tcgcollector
-ON cards(set_code, card_number, language, tcgcollector_card_id);
+DROP INDEX IF EXISTS idx_cards_set_number_language_tcgcollector;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_cards_set_catalog_number_tcgcollector
+ON cards(set_catalog_id, card_number, tcgcollector_card_id);
 CREATE INDEX IF NOT EXISTS idx_set_catalog_lookup
 ON set_catalog(source_region, set_name, set_code);
 CREATE INDEX IF NOT EXISTS idx_set_catalog_language

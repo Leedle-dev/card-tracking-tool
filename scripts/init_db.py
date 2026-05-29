@@ -72,8 +72,6 @@ ACTIVE_CARD_COLUMNS = [
     "pokedex_id",
     "name",
     "game",
-    "set_name",
-    "set_code",
     "card_number",
     "pokemon_name",
     "rarity",
@@ -81,9 +79,6 @@ ACTIVE_CARD_COLUMNS = [
     "source_sequence",
     "tcgcollector_card_id",
     "card_detail_url",
-    "language",
-    "region",
-    "release_year",
     "is_regional_exclusive",
     "notes",
     "primary_image_path",
@@ -149,6 +144,11 @@ def rebuild_cards_for_current_shape(conn: sqlite3.Connection) -> None:
         "pokemon_index",
         "variant_code",
         "is_chinese_exclusive",
+        "set_name",
+        "set_code",
+        "language",
+        "region",
+        "release_year",
         *INVENTORY_COLUMNS_MOVED_FROM_CARDS,
     }
     needs_rebuild = bool(legacy_columns & card_columns) or (
@@ -169,8 +169,6 @@ def rebuild_cards_for_current_shape(conn: sqlite3.Connection) -> None:
                 pokedex_id INTEGER,
                 name TEXT NOT NULL,
                 game TEXT NOT NULL DEFAULT 'Pokemon',
-                set_name TEXT,
-                set_code TEXT,
                 card_number TEXT,
                 pokemon_name TEXT,
                 rarity TEXT,
@@ -178,9 +176,6 @@ def rebuild_cards_for_current_shape(conn: sqlite3.Connection) -> None:
                 source_sequence INTEGER,
                 tcgcollector_card_id INTEGER,
                 card_detail_url TEXT,
-                language TEXT NOT NULL DEFAULT 'Simplified Chinese',
-                region TEXT,
-                release_year INTEGER,
                 is_regional_exclusive INTEGER NOT NULL DEFAULT 0 CHECK (is_regional_exclusive IN (0, 1)),
                 notes TEXT,
                 primary_image_path TEXT,
@@ -195,6 +190,8 @@ def rebuild_cards_for_current_shape(conn: sqlite3.Connection) -> None:
             "is_regional_exclusive"
             if "is_regional_exclusive" in card_columns
             else "is_chinese_exclusive"
+            if "is_chinese_exclusive" in card_columns
+            else "0"
         )
         select_columns = [
             source_exclusive_column if column == "is_regional_exclusive" else column
@@ -307,8 +304,6 @@ def pre_schema_migrations(conn: sqlite3.Connection) -> None:
         if card_columns and column not in card_columns:
             conn.execute(f"ALTER TABLE cards ADD COLUMN {column} {column_type}")
 
-    rebuild_cards_for_current_shape(conn)
-
     set_catalog_columns = column_names(conn, "set_catalog")
     set_catalog_columns_to_add = {
         "language": "TEXT",
@@ -321,6 +316,10 @@ def pre_schema_migrations(conn: sqlite3.Connection) -> None:
     grading_profile_columns = column_names(conn, "grading_profiles")
     if grading_profile_columns and "grading_company_id" not in grading_profile_columns:
         conn.execute("ALTER TABLE grading_profiles ADD COLUMN grading_company_id INTEGER")
+
+    backfill_set_catalog(conn)
+    backfill_card_set_catalog_links(conn)
+    rebuild_cards_for_current_shape(conn)
 
 
 def backfill_set_catalog(conn: sqlite3.Connection) -> None:
@@ -353,6 +352,9 @@ def backfill_set_catalog(conn: sqlite3.Connection) -> None:
 
 def backfill_card_set_catalog_links(conn: sqlite3.Connection) -> None:
     if not table_exists(conn, "cards") or not table_exists(conn, "set_catalog"):
+        return
+    card_columns = column_names(conn, "cards")
+    if not {"set_code", "set_name", "language"} <= card_columns:
         return
 
     rows = conn.execute(

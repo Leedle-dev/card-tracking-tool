@@ -310,40 +310,21 @@ def clear_existing_local_images(image_dir: Path) -> int:
 def reset_existing_import(
     conn: sqlite3.Connection,
     set_catalog_id: int | None,
-    set_code: str | None,
-    set_name: str,
-    language: str,
 ) -> int:
     rows = conn.execute(
         """
         SELECT id
         FROM cards
-        WHERE
-            set_catalog_id = ?
-            OR (
-                language = ?
-                AND (
-                    (set_code IS NOT NULL AND set_code = ?)
-                    OR set_name = ?
-                )
-            )
+        WHERE set_catalog_id = ?
         """,
-        (set_catalog_id, language, set_code, set_name),
+        (set_catalog_id,),
     ).fetchall()
     conn.execute(
         """
         DELETE FROM cards
-        WHERE
-            set_catalog_id = ?
-            OR (
-                language = ?
-                AND (
-                    (set_code IS NOT NULL AND set_code = ?)
-                    OR set_name = ?
-                )
-            )
+        WHERE set_catalog_id = ?
         """,
-        (set_catalog_id, language, set_code, set_name),
+        (set_catalog_id,),
     )
     return len(rows)
 
@@ -357,8 +338,6 @@ def import_card(
     set_row: dict[str, object],
     card: dict[str, object],
     image_dir: Path,
-    language: str,
-    region: str,
 ) -> None:
     source_image_url = str(card["source_image_url"])
     image_bytes = fetch_url_bytes(source_image_url)
@@ -366,14 +345,6 @@ def import_card(
     image_path = image_dir / image_filename
     image_path.write_bytes(image_bytes)
     relative_image_path = project_relative_path(image_path)
-
-    release_year = set_row.get("release_year")
-    release_date_text = set_row.get("release_date_text")
-    if release_year is None and release_date_text:
-        try:
-            release_year = datetime.strptime(str(release_date_text), "%b %d, %Y").year
-        except ValueError:
-            release_year = None
 
     notes = (
         f"Imported from TCGcollector set page: {set_row['set_url']}\n"
@@ -386,36 +357,26 @@ def import_card(
             set_catalog_id,
             name,
             game,
-            set_name,
-            set_code,
             card_number,
             pokemon_name,
             rarity,
             source_sequence,
             tcgcollector_card_id,
             card_detail_url,
-            language,
-            region,
-            release_year,
             notes,
             primary_image_path
         )
-        VALUES (?, ?, 'Pokemon', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, 'Pokemon', ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             set_row["id"],
             card["name"],
-            set_row["set_name"],
-            set_row.get("set_code"),
             card["card_number"],
             card["name"],
             card.get("rarity"),
             card["source_sequence"],
             card["tcgcollector_card_id"],
             card["card_detail_url"],
-            language,
-            region,
-            release_year,
             notes,
             relative_image_path,
         ),
@@ -485,14 +446,11 @@ def main() -> None:
         removed_rows = reset_existing_import(
             conn,
             int(set_row["id"]),
-            set_row.get("set_code"),
-            str(set_row["set_name"]),
-            language,
         )
         removed_images = clear_existing_local_images(image_dir)
 
         for card in cards:
-            import_card(conn, set_row, card, image_dir, language, region)
+            import_card(conn, set_row, card, image_dir)
 
     print(
         f"Imported {len(cards)} cards for {language} {set_row['set_name']} "

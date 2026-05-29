@@ -141,17 +141,17 @@ def find_card(conn: sqlite3.Connection, criteria: dict[str, str]) -> int:
         """
         SELECT
             c.id,
-            COALESCE(sc.language, c.language) AS language,
-            COALESCE(sc.set_code, c.set_code) AS set_code,
+            sc.language AS language,
+            sc.set_code AS set_code,
             c.card_number,
             c.name,
             c.rarity,
             c.tcgcollector_card_id
         FROM cards c
-        LEFT JOIN set_catalog sc ON sc.id = c.set_catalog_id
+        JOIN set_catalog sc ON sc.id = c.set_catalog_id
         WHERE
-            COALESCE(sc.language, c.language) = ?
-            AND COALESCE(sc.set_code, c.set_code) = ?
+            sc.language = ?
+            AND sc.set_code = ?
             AND c.card_number = ?
             AND c.name = ?
         ORDER BY
