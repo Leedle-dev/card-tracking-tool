@@ -30,17 +30,17 @@ MARKETPLACE_ID = "EBAY_US"
 QUERIES = [
     {
         "label": "english_houndoom_shrouded_fable",
-        "query": "Houndoom 066/064 Shrouded Fable",
+        "query": "Houndoom 066/064 SFA",
         "limit": 50,
     },
     {
         "label": "japanese_houndoom_night_wanderer",
-        "query": "Houndoom 066/064 Night Wanderer Japanese",
+        "query": "Houndoom 066/064 SV6a",
         "limit": 50,
     },
     {
         "label": "chinese_houndoom_gem_pack_vol_5",
-        "query": "Houndoom 0807/07 Gem Pack Vol. 5 Chinese",
+        "query": "Houndoom 0807/07 CBB5C",
         "limit": 50,
     },
 ]
