@@ -15,8 +15,16 @@ ROOT = Path(__file__).resolve().parents[2]
 OUTPUT_DIR = Path(__file__).resolve().parent / "output"
 RAW_DIR = OUTPUT_DIR / "raw"
 
-TOKEN_URL = "https://api.ebay.com/identity/v1/oauth2/token"
-BROWSE_SEARCH_URL = "https://api.ebay.com/buy/browse/v1/item_summary/search"
+ENVIRONMENT_URLS = {
+    "production": {
+        "token": "https://api.ebay.com/identity/v1/oauth2/token",
+        "browse_search": "https://api.ebay.com/buy/browse/v1/item_summary/search",
+    },
+    "sandbox": {
+        "token": "https://api.sandbox.ebay.com/identity/v1/oauth2/token",
+        "browse_search": "https://api.sandbox.ebay.com/buy/browse/v1/item_summary/search",
+    },
+}
 MARKETPLACE_ID = "EBAY_US"
 
 QUERIES = [
@@ -78,7 +86,29 @@ def request_bytes(url: str, headers: dict[str, str], data: bytes | None = None) 
         raise SystemExit(f"Request failed for {url}: {exc}") from exc
 
 
+def ebay_environment() -> str:
+    """Return the eBay environment to use.
+
+    Example:
+        $env:EBAY_ENV="sandbox"
+        $env:EBAY_ENV="production"
+    """
+
+    environment = os.getenv("EBAY_ENV", "production").lower().strip()
+    if environment not in ENVIRONMENT_URLS:
+        choices = ", ".join(sorted(ENVIRONMENT_URLS))
+        raise SystemExit(f"Unsupported EBAY_ENV={environment!r}. Expected one of: {choices}")
+    return environment
+
+
 def app_access_token() -> str:
+    """Return an app access token from either EBAY_ACCESS_TOKEN or app keys.
+
+    Example:
+        $env:EBAY_CLIENT_ID="your-client-id"
+        $env:EBAY_CLIENT_SECRET="your-client-secret"
+    """
+
     token = os.getenv("EBAY_ACCESS_TOKEN")
     if token:
         return token
@@ -99,7 +129,7 @@ def app_access_token() -> str:
         }
     ).encode("utf-8")
     response = request_bytes(
-        TOKEN_URL,
+        ENVIRONMENT_URLS[ebay_environment()]["token"],
         {
             "Authorization": f"Basic {credentials}",
             "Content-Type": "application/x-www-form-urlencoded",
@@ -118,7 +148,7 @@ def browse_search(access_token: str, query: dict[str, object]) -> dict[str, obje
         }
     )
     response = request_bytes(
-        f"{BROWSE_SEARCH_URL}?{params}",
+        f"{ENVIRONMENT_URLS[ebay_environment()]['browse_search']}?{params}",
         {
             "Authorization": f"Bearer {access_token}",
             "X-EBAY-C-MARKETPLACE-ID": MARKETPLACE_ID,
@@ -199,6 +229,7 @@ def main() -> None:
     summary_lines = [
         "eBay Browse API Houndoom search",
         f"Fetched at UTC: {timestamp}",
+        f"Environment: {ebay_environment()}",
         f"Marketplace: {MARKETPLACE_ID}",
         "",
     ]
