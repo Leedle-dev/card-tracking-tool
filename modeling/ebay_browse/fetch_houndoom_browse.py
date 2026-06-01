@@ -21,10 +21,12 @@ ENVIRONMENT_URLS = {
     "production": {
         "token": "https://api.ebay.com/identity/v1/oauth2/token",
         "browse_search": "https://api.ebay.com/buy/browse/v1/item_summary/search",
+        "rate_limits": "https://api.ebay.com/developer/analytics/v1_beta/rate_limit/",
     },
     "sandbox": {
         "token": "https://api.sandbox.ebay.com/identity/v1/oauth2/token",
         "browse_search": "https://api.sandbox.ebay.com/buy/browse/v1/item_summary/search",
+        "rate_limits": "https://api.sandbox.ebay.com/developer/analytics/v1_beta/rate_limit/",
     },
 }
 MARKETPLACE_ID = "EBAY_US"
@@ -55,7 +57,7 @@ QUERIES = [
         "card_number": "066/064",
         "set_code": "SFA",
         "set_name": "Shrouded Fable",
-        "limit": 50,
+        "limit": 200,
     },
     {
         "label": "japanese_houndoom_night_wanderer",
@@ -64,7 +66,7 @@ QUERIES = [
         "card_number": "066/064",
         "set_code": "SV6a",
         "set_name": "Night Wanderer",
-        "limit": 50,
+        "limit": 200,
     },
     {
         "label": "chinese_houndoom_gem_pack_vol_5",
@@ -73,7 +75,7 @@ QUERIES = [
         "card_number": "0807/07",
         "set_code": "CBB5C",
         "set_name": "Gem Pack Vol. 5",
-        "limit": 50,
+        "limit": 200,
     },
 ]
 
@@ -116,6 +118,20 @@ def request_bytes(url: str, headers: dict[str, str], data: bytes | None = None) 
         raise SystemExit(f"HTTP {exc.code} for {url}\n{body}") from exc
     except URLError as exc:
         raise SystemExit(f"Request failed for {url}: {exc}") from exc
+
+
+def request_json_optional(url: str, headers: dict[str, str]) -> tuple[dict[str, object] | None, str | None]:
+    request = Request(url, headers=headers)
+    try:
+        with urlopen(request, timeout=30) as response:
+            return json.loads(response.read().decode("utf-8")), None
+    except HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        return None, f"HTTP {exc.code} for {url}: {body}"
+    except URLError as exc:
+        return None, f"Request failed for {url}: {exc}"
+    except json.JSONDecodeError as exc:
+        return None, f"Could not decode rate-limit response from {url}: {exc}"
 
 
 def ebay_environment() -> str:
@@ -188,6 +204,78 @@ def browse_search(access_token: str, query: dict[str, object]) -> dict[str, obje
         },
     )
     return json.loads(response.decode("utf-8"))
+
+
+def fetch_rate_limits(access_token: str) -> tuple[dict[str, object] | None, str | None]:
+    return request_json_optional(
+        ENVIRONMENT_URLS[ebay_environment()]["rate_limits"],
+        {
+            "Authorization": f"Bearer {access_token}",
+            "Accept": "application/json",
+        },
+    )
+
+
+def format_rate_limit_lines(payload: dict[str, object] | None, error: str | None) -> list[str]:
+    lines = ["", "eBay API rate limits"]
+    if error:
+        return [*lines, f"Rate limit lookup skipped: {error}"]
+    if not payload:
+        return [*lines, "Rate limit lookup returned no data."]
+
+    rate_limits = payload.get("rateLimits")
+    if not isinstance(rate_limits, list):
+        return [*lines, "Rate limit lookup returned an unexpected response shape."]
+
+    browse_groups = []
+    for group in rate_limits:
+        if not isinstance(group, dict):
+            continue
+        api_name = str(group.get("apiName", ""))
+        api_context = str(group.get("apiContext", ""))
+        resources = group.get("resources", [])
+        resource_names = [
+            str(resource.get("name", ""))
+            for resource in resources
+            if isinstance(resource, dict)
+        ] if isinstance(resources, list) else []
+        searchable = " ".join([api_name, api_context, *resource_names]).lower()
+        if "browse" in searchable:
+            browse_groups.append(group)
+
+    if not browse_groups:
+        return [*lines, "No Browse API rate-limit rows were returned."]
+
+    for group in browse_groups:
+        api_context = value(group, "apiContext")
+        api_name = value(group, "apiName")
+        api_version = value(group, "apiVersion")
+        lines.append(f"{api_context} {api_name} {api_version}".strip())
+        resources = group.get("resources")
+        if not isinstance(resources, list):
+            continue
+        for resource in resources:
+            if not isinstance(resource, dict):
+                continue
+            resource_name = value(resource, "name")
+            rates = resource.get("rates")
+            if not isinstance(rates, list) or not rates:
+                lines.append(f"  {resource_name}: no rate details returned")
+                continue
+            for rate in rates:
+                if not isinstance(rate, dict):
+                    continue
+                lines.append(
+                    "  "
+                    f"{resource_name}: "
+                    f"used={value(rate, 'count')} "
+                    f"limit={value(rate, 'limit')} "
+                    f"remaining={value(rate, 'remaining')} "
+                    f"reset={value(rate, 'reset')} "
+                    f"window_seconds={value(rate, 'timeWindow')}"
+                )
+
+    return lines
 
 
 def value(payload: dict[str, object] | None, key: str) -> str:
@@ -414,6 +502,14 @@ def main() -> None:
         writer.writeheader()
         writer.writerows(rejected_rows)
 
+    rate_limit_payload, rate_limit_error = fetch_rate_limits(access_token)
+    rate_limit_lines = format_rate_limit_lines(rate_limit_payload, rate_limit_error)
+    summary_lines.extend(rate_limit_lines)
+
+    rate_limit_path = RAW_DIR / f"{timestamp}_ebay_rate_limits.json"
+    if rate_limit_payload is not None:
+        rate_limit_path.write_text(json.dumps(rate_limit_payload, indent=2, sort_keys=True), encoding="utf-8")
+
     summary_path = OUTPUT_DIR / f"{timestamp}_ebay_browse_houndoom_summary.txt"
     summary_path.write_text("\n".join(summary_lines) + "\n", encoding="utf-8")
 
@@ -422,6 +518,8 @@ def main() -> None:
     print(f"Wrote {len(rejected_rows)} rejected rows to {rejected_tsv_path}")
     print(f"Wrote summary to {summary_path}")
     print(f"Wrote raw JSON files to {RAW_DIR}")
+    for line in rate_limit_lines:
+        print(line)
 
 
 if __name__ == "__main__":
