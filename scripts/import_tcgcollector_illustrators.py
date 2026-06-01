@@ -1,6 +1,5 @@
 from pathlib import Path
 from urllib.error import HTTPError, URLError
-from urllib.parse import urljoin
 from urllib.request import Request, urlopen
 import argparse
 import html
@@ -11,7 +10,6 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 DB_PATH = ROOT / "data" / "card_tracker.sqlite"
-BASE_URL = "https://www.tcgcollector.com"
 
 REGION_ALIASES = {
     "english": "international",
@@ -92,12 +90,7 @@ def extract_illustrators(card_html: str) -> list[dict[str, str]]:
         if key in seen_names:
             continue
         seen_names.add(key)
-        illustrators.append(
-            {
-                "name": name,
-                "source_url": urljoin(BASE_URL, html.unescape(match.group("href"))),
-            }
-        )
+        illustrators.append({"name": name})
     return illustrators
 
 
@@ -197,7 +190,6 @@ def cards_to_process(
 def illustrator_id(
     conn: sqlite3.Connection,
     name: str,
-    source_url: str | None,
     release_year: int | None,
 ) -> int:
     row = conn.execute(
@@ -209,7 +201,6 @@ def illustrator_id(
             """
             UPDATE illustrators
             SET
-                source_url = COALESCE(source_url, ?),
                 first_seen_year = CASE
                     WHEN ? IS NULL THEN first_seen_year
                     WHEN first_seen_year IS NULL THEN ?
@@ -225,7 +216,6 @@ def illustrator_id(
             WHERE id = ?
             """,
             (
-                source_url,
                 release_year,
                 release_year,
                 release_year,
@@ -243,13 +233,12 @@ def illustrator_id(
         """
         INSERT INTO illustrators (
             name,
-            source_url,
             first_seen_year,
             last_seen_year
         )
-        VALUES (?, ?, ?, ?)
+        VALUES (?, ?, ?)
         """,
-        (name, source_url, release_year, release_year),
+        (name, release_year, release_year),
     )
     return int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
 
@@ -312,7 +301,6 @@ def import_illustrators(args: argparse.Namespace) -> None:
                 artist_id = illustrator_id(
                     conn,
                     illustrator["name"],
-                    illustrator["source_url"],
                     set_row.get("release_year"),
                 )
                 link_card_illustrator(

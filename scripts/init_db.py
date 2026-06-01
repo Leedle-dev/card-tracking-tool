@@ -274,6 +274,58 @@ def rebuild_cards_for_current_shape(conn: sqlite3.Connection) -> None:
         conn.execute("PRAGMA foreign_keys = ON")
 
 
+def rebuild_illustrators_for_current_shape(conn: sqlite3.Connection) -> None:
+    illustrator_columns = column_names(conn, "illustrators")
+    if not illustrator_columns or "source_url" not in illustrator_columns:
+        return
+
+    conn.execute("PRAGMA foreign_keys = OFF")
+    try:
+        conn.execute("DROP TABLE IF EXISTS illustrators_new")
+        conn.execute(
+            """
+            CREATE TABLE illustrators_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                first_seen_year INTEGER,
+                last_seen_year INTEGER,
+                popularity_rating INTEGER CHECK (
+                    popularity_rating IS NULL
+                    OR (popularity_rating >= 1 AND popularity_rating <= 10)
+                ),
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO illustrators_new (
+                id,
+                name,
+                first_seen_year,
+                last_seen_year,
+                popularity_rating,
+                created_at,
+                updated_at
+            )
+            SELECT
+                id,
+                name,
+                first_seen_year,
+                last_seen_year,
+                popularity_rating,
+                created_at,
+                updated_at
+            FROM illustrators
+            """
+        )
+        conn.execute("DROP TABLE illustrators")
+        conn.execute("ALTER TABLE illustrators_new RENAME TO illustrators")
+    finally:
+        conn.execute("PRAGMA foreign_keys = ON")
+
+
 def pre_schema_migrations(conn: sqlite3.Connection) -> None:
     pokedex_columns = column_names(conn, "pokedex")
     if pokedex_columns and "variant_name" not in pokedex_columns:
@@ -330,6 +382,7 @@ def pre_schema_migrations(conn: sqlite3.Connection) -> None:
     backfill_set_catalog(conn)
     backfill_card_set_catalog_links(conn)
     rebuild_cards_for_current_shape(conn)
+    rebuild_illustrators_for_current_shape(conn)
 
 
 def backfill_set_catalog(conn: sqlite3.Connection) -> None:

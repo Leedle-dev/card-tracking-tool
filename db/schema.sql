@@ -113,7 +113,6 @@ CREATE TABLE IF NOT EXISTS set_catalog (
 CREATE TABLE IF NOT EXISTS illustrators (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE,
-    source_url TEXT,
     first_seen_year INTEGER,
     last_seen_year INTEGER,
     popularity_rating INTEGER CHECK (
