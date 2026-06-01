@@ -60,7 +60,6 @@ TSV_COLUMNS = [
     "shipping_currency",
     "total_value",
     "total_currency",
-    "seller_username",
     "seller_feedback_score",
     "seller_feedback_percentage",
     "item_location_country",
@@ -205,7 +204,6 @@ def flatten_item(query: dict[str, object], result_count: int, item: dict[str, ob
         "total_currency": value(item.get("totalPrice"), "currency")
         if isinstance(item.get("totalPrice"), dict)
         else "",
-        "seller_username": value(seller, "username"),
         "seller_feedback_score": value(seller, "feedbackScore"),
         "seller_feedback_percentage": value(seller, "feedbackPercentage"),
         "item_location_country": value(location, "country"),
