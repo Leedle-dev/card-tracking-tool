@@ -30,6 +30,19 @@ ENVIRONMENT_URLS = {
 MARKETPLACE_ID = "EBAY_US"
 MIN_SELLER_FEEDBACK_SCORE = 10
 MIN_SELLER_FEEDBACK_PERCENTAGE = 89.0
+EXCLUDED_MARKET_TERMS = [
+    "Korea",
+    "Korean",
+    "Indonesia",
+    "Indonesian",
+    "Thai",
+    "Thailand",
+    "Traditional Chinese",
+    "Chinese Traditional",
+    "Taiwan",
+    "Taiwanese",
+    "Hong Kong",
+]
 
 QUERIES = [
     {
@@ -217,6 +230,13 @@ def title_has_set_identity(title: str, set_code: str, set_name: str) -> bool:
     return title_has_token(title, set_code) or title_has_phrase(title, set_name)
 
 
+def title_has_excluded_market(title: str) -> str | None:
+    for term in EXCLUDED_MARKET_TERMS:
+        if title_has_phrase(title, term):
+            return term
+    return None
+
+
 def title_has_phrase(title: str, phrase: str) -> bool:
     title_text = normalized_search_text(title)
     phrase_parts = re.findall(r"[a-z0-9]+", normalized_search_text(phrase))
@@ -241,6 +261,10 @@ def filter_reasons(query: dict[str, object], row: dict[str, str]) -> list[str]:
         reasons.append(f"title_missing_pokemon:{pokemon_name}")
     if not title_has_card_number(title, card_number):
         reasons.append(f"title_missing_card_number:{card_number}")
+
+    excluded_market = title_has_excluded_market(title)
+    if excluded_market:
+        reasons.append(f"title_excluded_market:{excluded_market}")
 
     feedback_score = parse_float(row["seller_feedback_score"])
     if feedback_score is None or feedback_score < MIN_SELLER_FEEDBACK_SCORE:
