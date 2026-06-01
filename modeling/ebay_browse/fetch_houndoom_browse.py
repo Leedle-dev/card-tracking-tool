@@ -9,6 +9,8 @@ from urllib.request import Request, urlopen
 import csv
 import json
 import os
+import re
+import unicodedata
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -26,21 +28,32 @@ ENVIRONMENT_URLS = {
     },
 }
 MARKETPLACE_ID = "EBAY_US"
+MIN_SELLER_FEEDBACK_SCORE = 10
+MIN_SELLER_FEEDBACK_PERCENTAGE = 89.0
 
 QUERIES = [
     {
         "label": "english_houndoom_shrouded_fable",
         "query": "Houndoom 066/064 SFA",
+        "pokemon_name": "Houndoom",
+        "card_number": "066/064",
+        "set_code": "SFA",
         "limit": 50,
     },
     {
         "label": "japanese_houndoom_night_wanderer",
         "query": "Houndoom 066/064 SV6a",
+        "pokemon_name": "Houndoom",
+        "card_number": "066/064",
+        "set_code": "SV6a",
         "limit": 50,
     },
     {
         "label": "chinese_houndoom_gem_pack_vol_5",
         "query": "Houndoom 0807/07 CBB5C",
+        "pokemon_name": "Houndoom",
+        "card_number": "0807/07",
+        "set_code": "CBB5C",
         "limit": 50,
     },
 ]
@@ -71,6 +84,7 @@ TSV_COLUMNS = [
     "image_url",
     "item_web_url",
 ]
+FILTERED_TSV_COLUMNS = [*TSV_COLUMNS, "filter_reasons"]
 
 
 def request_bytes(url: str, headers: dict[str, str], data: bytes | None = None) -> bytes:
@@ -164,6 +178,70 @@ def value(payload: dict[str, object] | None, key: str) -> str:
     return "" if item is None else str(item)
 
 
+def normalized_search_text(text: str) -> str:
+    """Normalize listing text before regex matching.
+
+    Example:
+        normalized_search_text("Pokémon Houndoom 066/064 SFA")
+    """
+
+    ascii_text = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
+    return ascii_text.lower()
+
+
+def title_has_token(title: str, token: str) -> bool:
+    token_pattern = re.escape(normalized_search_text(token))
+    return bool(re.search(rf"(?<![a-z0-9]){token_pattern}(?![a-z0-9])", normalized_search_text(title)))
+
+
+def title_has_card_number(title: str, card_number: str) -> bool:
+    title_text = normalized_search_text(title)
+    full_number_pattern = re.escape(card_number.lower())
+    if re.search(rf"(?<![0-9]){full_number_pattern}(?![0-9])", title_text):
+        return True
+
+    leading_number = card_number.split("/", 1)[0].lstrip("0") or "0"
+    padded_number = card_number.split("/", 1)[0]
+    leading_pattern = rf"(?:#|no\.?\s*)?0*{re.escape(leading_number)}"
+    padded_pattern = re.escape(padded_number)
+    return bool(
+        re.search(rf"(?<![0-9]){leading_pattern}(?![0-9])", title_text)
+        or re.search(rf"(?<![0-9]){padded_pattern}(?![0-9])", title_text)
+    )
+
+
+def parse_float(text: str) -> float | None:
+    try:
+        return float(text.replace(",", "").strip())
+    except ValueError:
+        return None
+
+
+def filter_reasons(query: dict[str, object], row: dict[str, str]) -> list[str]:
+    reasons = []
+    title = row["title"]
+    pokemon_name = str(query["pokemon_name"])
+    card_number = str(query["card_number"])
+    set_code = str(query["set_code"])
+
+    if not title_has_token(title, pokemon_name):
+        reasons.append(f"title_missing_pokemon:{pokemon_name}")
+    if not title_has_token(title, set_code):
+        reasons.append(f"title_missing_set_code:{set_code}")
+    if not title_has_card_number(title, card_number):
+        reasons.append(f"title_missing_card_number:{card_number}")
+
+    feedback_score = parse_float(row["seller_feedback_score"])
+    if feedback_score is None or feedback_score < MIN_SELLER_FEEDBACK_SCORE:
+        reasons.append(f"seller_feedback_score_below_{MIN_SELLER_FEEDBACK_SCORE}")
+
+    feedback_percentage = parse_float(row["seller_feedback_percentage"])
+    if feedback_percentage is None or feedback_percentage < MIN_SELLER_FEEDBACK_PERCENTAGE:
+        reasons.append(f"seller_feedback_percentage_below_{MIN_SELLER_FEEDBACK_PERCENTAGE:g}")
+
+    return reasons
+
+
 def flatten_item(query: dict[str, object], result_count: int, item: dict[str, object]) -> dict[str, str]:
     price = item.get("price") if isinstance(item.get("price"), dict) else {}
     shipping_options = item.get("shippingOptions")
@@ -224,11 +302,15 @@ def main() -> None:
 
     access_token = app_access_token()
     rows = []
+    accepted_rows = []
+    rejected_rows = []
     summary_lines = [
         "eBay Browse API Houndoom search",
         f"Fetched at UTC: {timestamp}",
         f"Environment: {ebay_environment()}",
         f"Marketplace: {MARKETPLACE_ID}",
+        f"Minimum seller feedback score: {MIN_SELLER_FEEDBACK_SCORE}",
+        f"Minimum seller feedback percentage: {MIN_SELLER_FEEDBACK_PERCENTAGE:g}",
         "",
     ]
 
@@ -241,10 +323,24 @@ def main() -> None:
         if not isinstance(items, list):
             items = []
         result_count = int(payload.get("total", len(items)) or 0)
-        summary_lines.append(f"{query['label']}: total={result_count}, exported={len(items)}")
+        query_accepted = 0
+        query_rejected = 0
         for item in items:
             if isinstance(item, dict):
-                rows.append(flatten_item(query, result_count, item))
+                row = flatten_item(query, result_count, item)
+                rows.append(row)
+                reasons = filter_reasons(query, row)
+                filtered_row = {**row, "filter_reasons": ";".join(reasons)}
+                if reasons:
+                    rejected_rows.append(filtered_row)
+                    query_rejected += 1
+                else:
+                    accepted_rows.append(filtered_row)
+                    query_accepted += 1
+        summary_lines.append(
+            f"{query['label']}: total={result_count}, exported={len(items)}, "
+            f"accepted={query_accepted}, rejected={query_rejected}"
+        )
 
     tsv_path = OUTPUT_DIR / f"{timestamp}_ebay_browse_houndoom_results.tsv"
     with tsv_path.open("w", newline="", encoding="utf-8") as file:
@@ -252,10 +348,24 @@ def main() -> None:
         writer.writeheader()
         writer.writerows(rows)
 
+    filtered_tsv_path = OUTPUT_DIR / f"{timestamp}_ebay_browse_houndoom_filtered_results.tsv"
+    with filtered_tsv_path.open("w", newline="", encoding="utf-8") as file:
+        writer = csv.DictWriter(file, fieldnames=FILTERED_TSV_COLUMNS, delimiter="\t")
+        writer.writeheader()
+        writer.writerows(accepted_rows)
+
+    rejected_tsv_path = OUTPUT_DIR / f"{timestamp}_ebay_browse_houndoom_rejected_results.tsv"
+    with rejected_tsv_path.open("w", newline="", encoding="utf-8") as file:
+        writer = csv.DictWriter(file, fieldnames=FILTERED_TSV_COLUMNS, delimiter="\t")
+        writer.writeheader()
+        writer.writerows(rejected_rows)
+
     summary_path = OUTPUT_DIR / f"{timestamp}_ebay_browse_houndoom_summary.txt"
     summary_path.write_text("\n".join(summary_lines) + "\n", encoding="utf-8")
 
     print(f"Wrote {len(rows)} rows to {tsv_path}")
+    print(f"Wrote {len(accepted_rows)} accepted rows to {filtered_tsv_path}")
+    print(f"Wrote {len(rejected_rows)} rejected rows to {rejected_tsv_path}")
     print(f"Wrote summary to {summary_path}")
     print(f"Wrote raw JSON files to {RAW_DIR}")
 
