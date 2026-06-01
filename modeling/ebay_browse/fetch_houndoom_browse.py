@@ -38,6 +38,7 @@ QUERIES = [
         "pokemon_name": "Houndoom",
         "card_number": "066/064",
         "set_code": "SFA",
+        "set_name": "Shrouded Fable",
         "limit": 50,
     },
     {
@@ -46,6 +47,7 @@ QUERIES = [
         "pokemon_name": "Houndoom",
         "card_number": "066/064",
         "set_code": "SV6a",
+        "set_name": "Night Wanderer",
         "limit": 50,
     },
     {
@@ -54,6 +56,7 @@ QUERIES = [
         "pokemon_name": "Houndoom",
         "card_number": "0807/07",
         "set_code": "CBB5C",
+        "set_name": "Gem Pack Vol. 5",
         "limit": 50,
     },
 ]
@@ -210,6 +213,17 @@ def title_has_card_number(title: str, card_number: str) -> bool:
     )
 
 
+def title_has_set_identity(title: str, set_code: str, set_name: str) -> bool:
+    return title_has_token(title, set_code) or title_has_phrase(title, set_name)
+
+
+def title_has_phrase(title: str, phrase: str) -> bool:
+    title_text = normalized_search_text(title)
+    phrase_parts = re.findall(r"[a-z0-9]+", normalized_search_text(phrase))
+    flexible_phrase = r"\W+".join(re.escape(part) for part in phrase_parts)
+    return bool(re.search(rf"(?<![a-z0-9]){flexible_phrase}(?![a-z0-9])", title_text))
+
+
 def parse_float(text: str) -> float | None:
     try:
         return float(text.replace(",", "").strip())
@@ -223,11 +237,12 @@ def filter_reasons(query: dict[str, object], row: dict[str, str]) -> list[str]:
     pokemon_name = str(query["pokemon_name"])
     card_number = str(query["card_number"])
     set_code = str(query["set_code"])
+    set_name = str(query["set_name"])
 
     if not title_has_token(title, pokemon_name):
         reasons.append(f"title_missing_pokemon:{pokemon_name}")
-    if not title_has_token(title, set_code):
-        reasons.append(f"title_missing_set_code:{set_code}")
+    if not title_has_set_identity(title, set_code, set_name):
+        reasons.append(f"title_missing_set_identity:{set_code}_or_{set_name}")
     if not title_has_card_number(title, card_number):
         reasons.append(f"title_missing_card_number:{card_number}")
 

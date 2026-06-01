@@ -26,3 +26,4 @@ reports/grading_ev/*_preview.png
 # OS/editor noise
 .DS_Store
 Thumbs.db
+__pycache__/
