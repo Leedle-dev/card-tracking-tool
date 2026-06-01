@@ -114,6 +114,12 @@ CREATE TABLE IF NOT EXISTS illustrators (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE,
     source_url TEXT,
+    first_seen_year INTEGER,
+    last_seen_year INTEGER,
+    popularity_rating INTEGER CHECK (
+        popularity_rating IS NULL
+        OR (popularity_rating >= 1 AND popularity_rating <= 10)
+    ),
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -379,6 +385,24 @@ AFTER UPDATE ON illustrators
 FOR EACH ROW
 BEGIN
     UPDATE illustrators SET updated_at = CURRENT_TIMESTAMP WHERE id = OLD.id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_illustrators_popularity_rating_insert
+BEFORE INSERT ON illustrators
+FOR EACH ROW
+WHEN NEW.popularity_rating IS NOT NULL
+    AND (NEW.popularity_rating < 1 OR NEW.popularity_rating > 10)
+BEGIN
+    SELECT RAISE(ABORT, 'illustrators.popularity_rating must be between 1 and 10');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_illustrators_popularity_rating_update
+BEFORE UPDATE OF popularity_rating ON illustrators
+FOR EACH ROW
+WHEN NEW.popularity_rating IS NOT NULL
+    AND (NEW.popularity_rating < 1 OR NEW.popularity_rating > 10)
+BEGIN
+    SELECT RAISE(ABORT, 'illustrators.popularity_rating must be between 1 and 10');
 END;
 
 CREATE TRIGGER IF NOT EXISTS trg_grading_companies_updated_at

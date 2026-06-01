@@ -82,6 +82,17 @@ def main() -> None:
         card_illustrator_count = conn.execute(
             "SELECT COUNT(*) FROM card_illustrators"
         ).fetchone()[0]
+        illustrators_with_years_count = conn.execute(
+            """
+            SELECT COUNT(*)
+            FROM illustrators
+            WHERE first_seen_year IS NOT NULL
+              AND last_seen_year IS NOT NULL
+            """
+        ).fetchone()[0]
+        rated_illustrator_count = conn.execute(
+            "SELECT COUNT(*) FROM illustrators WHERE popularity_rating IS NOT NULL"
+        ).fetchone()[0]
         inventory_count = conn.execute(
             "SELECT COUNT(*) FROM card_inventory"
         ).fetchone()[0]
@@ -180,6 +191,8 @@ def main() -> None:
     print("\nIllustrator counts:")
     print(f"- Illustrators: {illustrator_count}")
     print(f"- Card links: {card_illustrator_count}")
+    print(f"- With first/last seen years: {illustrators_with_years_count}")
+    print(f"- With popularity ratings: {rated_illustrator_count}")
 
 
 if __name__ == "__main__":

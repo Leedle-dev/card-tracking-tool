@@ -118,7 +118,7 @@ def resolve_set(
 
     rows = conn.execute(
         f"""
-        SELECT id, source_region, language, set_name, set_code
+        SELECT id, source_region, language, set_name, set_code, release_year
         FROM set_catalog
         WHERE {" AND ".join(clauses)}
         ORDER BY release_date_text DESC, id
@@ -129,7 +129,7 @@ def resolve_set(
     if not rows and set_name:
         rows = conn.execute(
             """
-            SELECT id, source_region, language, set_name, set_code
+            SELECT id, source_region, language, set_name, set_code, release_year
             FROM set_catalog
             WHERE source_region = ? AND lower(set_name) LIKE lower(?)
             ORDER BY release_date_text DESC, id
@@ -155,6 +155,7 @@ def resolve_set(
         "language": row[2],
         "set_name": row[3],
         "set_code": row[4],
+        "release_year": row[5],
     }
 
 
@@ -193,29 +194,62 @@ def cards_to_process(
     ).fetchall()
 
 
-def illustrator_id(conn: sqlite3.Connection, name: str, source_url: str | None) -> int:
+def illustrator_id(
+    conn: sqlite3.Connection,
+    name: str,
+    source_url: str | None,
+    release_year: int | None,
+) -> int:
     row = conn.execute(
         "SELECT id FROM illustrators WHERE lower(name) = lower(?)",
         (name,),
     ).fetchone()
     if row:
-        if source_url:
-            conn.execute(
-                """
-                UPDATE illustrators
-                SET source_url = COALESCE(source_url, ?)
-                WHERE id = ?
-                """,
-                (source_url, row["id"]),
-            )
+        conn.execute(
+            """
+            UPDATE illustrators
+            SET
+                source_url = COALESCE(source_url, ?),
+                first_seen_year = CASE
+                    WHEN ? IS NULL THEN first_seen_year
+                    WHEN first_seen_year IS NULL THEN ?
+                    WHEN first_seen_year > ? THEN ?
+                    ELSE first_seen_year
+                END,
+                last_seen_year = CASE
+                    WHEN ? IS NULL THEN last_seen_year
+                    WHEN last_seen_year IS NULL THEN ?
+                    WHEN last_seen_year < ? THEN ?
+                    ELSE last_seen_year
+                END
+            WHERE id = ?
+            """,
+            (
+                source_url,
+                release_year,
+                release_year,
+                release_year,
+                release_year,
+                release_year,
+                release_year,
+                release_year,
+                release_year,
+                row["id"],
+            ),
+        )
         return int(row["id"])
 
     conn.execute(
         """
-        INSERT INTO illustrators (name, source_url)
-        VALUES (?, ?)
+        INSERT INTO illustrators (
+            name,
+            source_url,
+            first_seen_year,
+            last_seen_year
+        )
+        VALUES (?, ?, ?, ?)
         """,
-        (name, source_url),
+        (name, source_url, release_year, release_year),
     )
     return int(conn.execute("SELECT last_insert_rowid()").fetchone()[0])
 
@@ -247,7 +281,7 @@ def import_illustrators(args: argparse.Namespace) -> None:
 
     print(
         f"Set: {set_row['language']} | {set_row.get('set_code') or 'NO-CODE'} | "
-        f"{set_row['set_name']}"
+        f"{set_row['set_name']} | release year {set_row.get('release_year') or 'unknown'}"
     )
     print(f"Cards queued: {len(cards)}")
 
@@ -279,6 +313,7 @@ def import_illustrators(args: argparse.Namespace) -> None:
                     conn,
                     illustrator["name"],
                     illustrator["source_url"],
+                    set_row.get("release_year"),
                 )
                 link_card_illustrator(
                     conn,

@@ -317,6 +317,16 @@ def pre_schema_migrations(conn: sqlite3.Connection) -> None:
     if grading_profile_columns and "grading_company_id" not in grading_profile_columns:
         conn.execute("ALTER TABLE grading_profiles ADD COLUMN grading_company_id INTEGER")
 
+    illustrator_columns = column_names(conn, "illustrators")
+    illustrator_columns_to_add = {
+        "first_seen_year": "INTEGER",
+        "last_seen_year": "INTEGER",
+        "popularity_rating": "INTEGER",
+    }
+    for column, column_type in illustrator_columns_to_add.items():
+        if illustrator_columns and column not in illustrator_columns:
+            conn.execute(f"ALTER TABLE illustrators ADD COLUMN {column} {column_type}")
+
     backfill_set_catalog(conn)
     backfill_card_set_catalog_links(conn)
     rebuild_cards_for_current_shape(conn)
@@ -412,6 +422,61 @@ def backfill_card_inventory(conn: sqlite3.Connection) -> None:
     )
 
 
+def backfill_illustrator_years(conn: sqlite3.Connection) -> None:
+    if (
+        not table_exists(conn, "illustrators")
+        or not table_exists(conn, "card_illustrators")
+        or not table_exists(conn, "cards")
+        or not table_exists(conn, "set_catalog")
+    ):
+        return
+
+    illustrator_columns = column_names(conn, "illustrators")
+    if not {"first_seen_year", "last_seen_year"} <= illustrator_columns:
+        return
+
+    conn.execute(
+        """
+        UPDATE illustrators
+        SET
+            first_seen_year = (
+                SELECT
+                    CASE
+                        WHEN MIN(sc.release_year) IS NULL THEN illustrators.first_seen_year
+                        WHEN illustrators.first_seen_year IS NULL THEN MIN(sc.release_year)
+                        WHEN illustrators.first_seen_year > MIN(sc.release_year) THEN MIN(sc.release_year)
+                        ELSE illustrators.first_seen_year
+                    END
+                FROM card_illustrators ci
+                JOIN cards c ON c.id = ci.card_id
+                JOIN set_catalog sc ON sc.id = c.set_catalog_id
+                WHERE ci.illustrator_id = illustrators.id
+            ),
+            last_seen_year = (
+                SELECT
+                    CASE
+                        WHEN MAX(sc.release_year) IS NULL THEN illustrators.last_seen_year
+                        WHEN illustrators.last_seen_year IS NULL THEN MAX(sc.release_year)
+                        WHEN illustrators.last_seen_year < MAX(sc.release_year) THEN MAX(sc.release_year)
+                        ELSE illustrators.last_seen_year
+                    END
+                FROM card_illustrators ci
+                JOIN cards c ON c.id = ci.card_id
+                JOIN set_catalog sc ON sc.id = c.set_catalog_id
+                WHERE ci.illustrator_id = illustrators.id
+            )
+        WHERE EXISTS (
+            SELECT 1
+            FROM card_illustrators ci
+            JOIN cards c ON c.id = ci.card_id
+            JOIN set_catalog sc ON sc.id = c.set_catalog_id
+            WHERE ci.illustrator_id = illustrators.id
+              AND sc.release_year IS NOT NULL
+        )
+        """
+    )
+
+
 def backfill_grading_profile_company_links(conn: sqlite3.Connection) -> None:
     if not table_exists(conn, "grading_profiles") or not table_exists(conn, "grading_companies"):
         return
@@ -441,6 +506,7 @@ def main() -> None:
         backfill_set_catalog(conn)
         backfill_card_set_catalog_links(conn)
         backfill_card_inventory(conn)
+        backfill_illustrator_years(conn)
         conn.executemany(
             """
             INSERT INTO marketplace_sources (name, website_url, notes)
