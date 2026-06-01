@@ -156,6 +156,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Fetch TCGcollector set catalogs for manual review."
     )
+    # Argument examples:
+    #   --region all
+    #   --region s-chinese
+    #   --region japanese
     parser.add_argument(
         "--region",
         choices=[*CATALOGS.keys(), "all"],

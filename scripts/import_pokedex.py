@@ -207,6 +207,9 @@ def update_card_links(conn: sqlite3.Connection) -> int:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Import Pokedex rows and link cards.")
+    # Argument examples:
+    #   --link-only
+    #   omit arguments to fetch PokeAPI rows, import/update pokedex, and relink cards
     parser.add_argument(
         "--link-only",
         action="store_true",

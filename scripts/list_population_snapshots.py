@@ -9,6 +9,10 @@ DB_PATH = ROOT / "data" / "card_tracker.sqlite"
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="List grading population snapshots.")
+    # Argument examples:
+    #   Houndoom
+    #   "Night Wanderer"
+    #   omit query to list all snapshots
     parser.add_argument("query", nargs="?", default="")
     args = parser.parse_args()
 

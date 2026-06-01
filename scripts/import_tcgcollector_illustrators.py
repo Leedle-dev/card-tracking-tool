@@ -304,6 +304,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Import TCGcollector card illustrators for one local set."
     )
+    # Argument examples:
+    #   --language s-chinese --set-name "Gem Pack Vol. 5"
+    #   --language japanese --set-code SV6a --limit 10
+    #   --language english --set-name "Shrouded Fable" --refresh
     parser.add_argument("--language", default="s-chinese")
     parser.add_argument("--set-name", default="Gem Pack Vol. 5")
     parser.add_argument("--set-code", default=None)

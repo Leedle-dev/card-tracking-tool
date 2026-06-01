@@ -9,6 +9,10 @@ DB_PATH = ROOT / "data" / "card_tracker.sqlite"
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Search imported cards.")
+    # Argument examples:
+    #   Houndoom
+    #   Pikachu --set-code CBB5C
+    #   Floragato --language "Simplified Chinese"
     parser.add_argument("query", nargs="?", default="")
     parser.add_argument("--set-code", default="")
     parser.add_argument("--language", default="")

@@ -415,6 +415,10 @@ def main() -> None:
             "and set name resolved from the local set_catalog table."
         )
     )
+    # Argument examples:
+    #   --language s-chinese --set-name "Gem Pack Vol. 5"
+    #   --language japanese --set-name "Night Wanderer"
+    #   --language english --set-name "Shrouded Fable"
     parser.add_argument("--language", default="s-chinese")
     parser.add_argument("--set-name", default="Gem Pack Vol. 5")
     args = parser.parse_args()

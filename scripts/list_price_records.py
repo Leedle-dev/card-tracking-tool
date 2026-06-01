@@ -13,6 +13,10 @@ def money(cents: int) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="List raw and graded price records.")
+    # Argument examples:
+    #   Houndoom
+    #   "Shrouded Fable"
+    #   omit query to list all price records
     parser.add_argument("query", nargs="?", default="")
     args = parser.parse_args()
 

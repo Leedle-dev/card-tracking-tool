@@ -111,6 +111,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Fetch raw TCGcollector HTML for manual inspection."
     )
+    # Argument examples:
+    #   --url "https://www.tcgcollector.com/sets/11808/gem-pack-vol-5?setCardCountMode=anyCardVariant"
+    #   --output data/raw_fetches/tcgcollector_gem_pack_vol5.html
     parser.add_argument("--url", default=DEFAULT_URL)
     parser.add_argument("--output", default=str(DEFAULT_OUTPUT))
     args = parser.parse_args()

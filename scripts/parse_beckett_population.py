@@ -96,6 +96,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Parse one tab-delimited Beckett population table row."
     )
+    # Argument examples:
+    #   --sample
+    #   --tcgcollector-set-id 11808 "Pikachu AR\t173\t3\t0.2%..."
+    #   paste a row through stdin when no row argument is supplied
     parser.add_argument("--sample", action="store_true", help="Parse the built-in sample row.")
     parser.add_argument(
         "--tcgcollector-set-id",
