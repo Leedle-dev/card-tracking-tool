@@ -321,6 +321,8 @@ CREATE INDEX IF NOT EXISTS idx_set_catalog_language
 ON set_catalog(language);
 CREATE INDEX IF NOT EXISTS idx_pokedex_name
 ON pokedex(pokemon_name, variant_name);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_illustrators_name_nocase
+ON illustrators(lower(name));
 CREATE INDEX IF NOT EXISTS idx_card_illustrators_card
 ON card_illustrators(card_id);
 CREATE INDEX IF NOT EXISTS idx_card_illustrators_illustrator

@@ -76,6 +76,12 @@ def main() -> None:
         cards_with_pokedex_count = conn.execute(
             "SELECT COUNT(*) FROM cards WHERE pokedex_id IS NOT NULL"
         ).fetchone()[0]
+        illustrator_count = conn.execute(
+            "SELECT COUNT(*) FROM illustrators"
+        ).fetchone()[0]
+        card_illustrator_count = conn.execute(
+            "SELECT COUNT(*) FROM card_illustrators"
+        ).fetchone()[0]
         inventory_count = conn.execute(
             "SELECT COUNT(*) FROM card_inventory"
         ).fetchone()[0]
@@ -170,6 +176,10 @@ def main() -> None:
     print("\nPokedex counts:")
     print(f"- Rows: {pokedex_count}")
     print(f"- Variant rows: {pokedex_variant_count}")
+
+    print("\nIllustrator counts:")
+    print(f"- Illustrators: {illustrator_count}")
+    print(f"- Card links: {card_illustrator_count}")
 
 
 if __name__ == "__main__":

@@ -111,6 +111,10 @@ To relink cards to the existing local Pokedex without refetching:
 
 C:\Users\Lee\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe scripts\import_pokedex.py --link-only
 
+To import illustrator credits from TCGcollector card detail pages for one set:
+
+C:\Users\Lee\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe scripts\import_tcgcollector_illustrators.py --language s-chinese --set-name "Gem Pack Vol. 5"
+
 To seed the current manual Beckett population snapshots:
 
 C:\Users\Lee\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe scripts\seed_population_snapshots.py
