@@ -42,6 +42,9 @@ EXCLUDED_MARKET_TERMS = [
     "Taiwan",
     "Taiwanese",
     "Hong Kong",
+    "Italy",
+    "Italian",
+    "ITA",
 ]
 
 QUERIES = [
