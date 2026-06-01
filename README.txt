@@ -58,6 +58,14 @@ Development Notes
 
 This repository starts as a local workspace for planning and building the tool. The preferred first implementation should be easy to run on Windows, use a local database, and keep the earliest version focused on reliable manual workflows before adding marketplace automation.
 
+SQLAlchemy ORM Direction
+
+The project now has a lightweight SQLAlchemy ORM layer in card_tracker/db/. This is the medium-difficulty path: db/schema.sql remains the current source of truth, existing working scripts can keep using sqlite3, and new scripts should use the ORM models and session helpers where practical.
+
+Install dependencies before running ORM-backed scripts:
+
+C:\Users\Lee\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe -m pip install -r requirements.txt
+
 Local Database
 
 The project uses SQLite for the local database. The schema lives in db/schema.sql, and the local database file is created at data/card_tracker.sqlite.
@@ -85,8 +93,8 @@ Initial database coverage:
 - Raw price records.
 - Graded price records.
 - Grading population snapshots and per-grade population rows.
+- Grade rate reference data and filter groups.
 - Grading fee profiles.
-- Grading EV assumptions.
 - Saved grading EV calculation runs.
 
 Example Imports
