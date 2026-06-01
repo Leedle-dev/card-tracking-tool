@@ -87,7 +87,7 @@ TSV_COLUMNS = [
     "image_url",
     "item_web_url",
 ]
-FILTERED_TSV_COLUMNS = [*TSV_COLUMNS, "filter_reasons"]
+FILTERED_TSV_COLUMNS = [*TSV_COLUMNS, "filter_reasons", "filter_warnings"]
 
 
 def request_bytes(url: str, headers: dict[str, str], data: bytes | None = None) -> bytes:
@@ -236,13 +236,9 @@ def filter_reasons(query: dict[str, object], row: dict[str, str]) -> list[str]:
     title = row["title"]
     pokemon_name = str(query["pokemon_name"])
     card_number = str(query["card_number"])
-    set_code = str(query["set_code"])
-    set_name = str(query["set_name"])
 
     if not title_has_token(title, pokemon_name):
         reasons.append(f"title_missing_pokemon:{pokemon_name}")
-    if not title_has_set_identity(title, set_code, set_name):
-        reasons.append(f"title_missing_set_identity:{set_code}_or_{set_name}")
     if not title_has_card_number(title, card_number):
         reasons.append(f"title_missing_card_number:{card_number}")
 
@@ -255,6 +251,17 @@ def filter_reasons(query: dict[str, object], row: dict[str, str]) -> list[str]:
         reasons.append(f"seller_feedback_percentage_below_{MIN_SELLER_FEEDBACK_PERCENTAGE:g}")
 
     return reasons
+
+
+def filter_warnings(query: dict[str, object], row: dict[str, str]) -> list[str]:
+    warnings = []
+    set_code = str(query["set_code"])
+    set_name = str(query["set_name"])
+
+    if not title_has_set_identity(row["title"], set_code, set_name):
+        warnings.append(f"title_missing_set_identity:{set_code}_or_{set_name}")
+
+    return warnings
 
 
 def flatten_item(query: dict[str, object], result_count: int, item: dict[str, object]) -> dict[str, str]:
@@ -345,7 +352,12 @@ def main() -> None:
                 row = flatten_item(query, result_count, item)
                 rows.append(row)
                 reasons = filter_reasons(query, row)
-                filtered_row = {**row, "filter_reasons": ";".join(reasons)}
+                warnings = filter_warnings(query, row)
+                filtered_row = {
+                    **row,
+                    "filter_reasons": ";".join(reasons),
+                    "filter_warnings": ";".join(warnings),
+                }
                 if reasons:
                     rejected_rows.append(filtered_row)
                     query_rejected += 1
