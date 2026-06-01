@@ -185,19 +185,6 @@ CREATE TABLE IF NOT EXISTS grading_profiles (
     FOREIGN KEY (grading_company_id) REFERENCES grading_companies(id)
 );
 
-CREATE TABLE IF NOT EXISTS grading_ev_assumptions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    card_id INTEGER NOT NULL,
-    grading_profile_id INTEGER NOT NULL,
-    grade TEXT NOT NULL,
-    probability REAL NOT NULL CHECK (probability >= 0 AND probability <= 1),
-    expected_sale_price_cents INTEGER NOT NULL CHECK (expected_sale_price_cents >= 0),
-    notes TEXT,
-    FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE,
-    FOREIGN KEY (grading_profile_id) REFERENCES grading_profiles(id) ON DELETE CASCADE,
-    UNIQUE (card_id, grading_profile_id, grade)
-);
-
 CREATE TABLE IF NOT EXISTS grading_ev_runs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     card_id INTEGER NOT NULL,

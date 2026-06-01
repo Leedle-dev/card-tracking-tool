@@ -327,6 +327,8 @@ def rebuild_illustrators_for_current_shape(conn: sqlite3.Connection) -> None:
 
 
 def pre_schema_migrations(conn: sqlite3.Connection) -> None:
+    conn.execute("DROP TABLE IF EXISTS grading_ev_assumptions")
+
     pokedex_columns = column_names(conn, "pokedex")
     if pokedex_columns and "variant_name" not in pokedex_columns:
         pokedex_count = conn.execute("SELECT COUNT(*) FROM pokedex").fetchone()[0]
