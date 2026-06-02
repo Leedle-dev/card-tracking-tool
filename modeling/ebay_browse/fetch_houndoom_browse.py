@@ -113,6 +113,9 @@ TSV_COLUMNS = [
     "result_count",
     "item_id",
     "legacy_item_id",
+    "is_variation_listing",
+    "item_group_href",
+    "item_group_type",
     "title",
     "condition",
     "buying_options",
@@ -404,6 +407,11 @@ def parse_float(text: str) -> float | None:
         return None
 
 
+def is_variation_listing(item_id: str) -> str:
+    parts = item_id.split("|")
+    return str(len(parts) == 3 and parts[2] != "0")
+
+
 def filter_reasons(query: dict[str, object], row: dict[str, str]) -> list[str]:
     reasons = []
     title = row["title"]
@@ -470,6 +478,9 @@ def flatten_item(query: dict[str, object], result_count: int, item: dict[str, ob
         "result_count": str(result_count),
         "item_id": value(item, "itemId"),
         "legacy_item_id": value(item, "legacyItemId"),
+        "is_variation_listing": is_variation_listing(value(item, "itemId")),
+        "item_group_href": value(item, "itemGroupHref"),
+        "item_group_type": value(item, "itemGroupType"),
         "title": value(item, "title"),
         "condition": value(item, "condition"),
         "buying_options": ",".join(item.get("buyingOptions", []))
