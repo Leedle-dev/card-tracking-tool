@@ -48,11 +48,39 @@ EXCLUDED_MARKET_TERMS = [
     "Italian",
     "ITA",
 ]
+LANGUAGE_EXCLUSION_TERMS = {
+    "english": [
+        "Japanese",
+        "Japan",
+        "JPN",
+        "Chinese",
+        "Simplified Chinese",
+        "S-Chinese",
+        "S Chinese",
+        "CHN",
+    ],
+    "japanese": [
+        "English",
+        "ENG",
+        "Chinese",
+        "Simplified Chinese",
+        "S-Chinese",
+        "S Chinese",
+        "CHN",
+    ],
+    "s-chinese": [
+        "English",
+        "ENG",
+        "Japanese",
+        "Japan",
+        "JPN",
+    ],
+}
 
 QUERIES = [
     {
         "label": "english_houndoom_shrouded_fable",
-        "query": "Houndoom 066/064 SFA",
+        "language": "english",
         "pokemon_name": "Houndoom",
         "card_number": "066/064",
         "set_code": "SFA",
@@ -61,7 +89,7 @@ QUERIES = [
     },
     {
         "label": "japanese_houndoom_night_wanderer",
-        "query": "Houndoom 066/064 SV6a",
+        "language": "japanese",
         "pokemon_name": "Houndoom",
         "card_number": "066/064",
         "set_code": "SV6a",
@@ -70,7 +98,7 @@ QUERIES = [
     },
     {
         "label": "chinese_houndoom_gem_pack_vol_5",
-        "query": "Houndoom 0807/07 CBB5C",
+        "language": "s-chinese",
         "pokemon_name": "Houndoom",
         "card_number": "0807/07",
         "set_code": "CBB5C",
@@ -191,7 +219,7 @@ def app_access_token() -> str:
 def browse_search(access_token: str, query: dict[str, object]) -> dict[str, object]:
     params = urlencode(
         {
-            "q": str(query["query"]),
+            "q": search_query_text(query),
             "limit": int(query["limit"]),
         }
     )
@@ -285,6 +313,32 @@ def value(payload: dict[str, object] | None, key: str) -> str:
     return "" if item is None else str(item)
 
 
+def card_number_search_prefix(card_number: str) -> str:
+    """Return the searchable card number before a slash delimiter.
+
+    Example:
+        card_number_search_prefix("066/064") -> "066"
+    """
+
+    return re.split(r"[/\\-]", card_number, maxsplit=1)[0].strip()
+
+
+def search_query_text(query: dict[str, object]) -> str:
+    """Build the eBay search text from card identity fields.
+
+    Example:
+        Houndoom 066 Shrouded Fable
+    """
+
+    return " ".join(
+        [
+            str(query["pokemon_name"]),
+            card_number_search_prefix(str(query["card_number"])),
+            str(query["set_name"]),
+        ]
+    )
+
+
 def normalized_search_text(text: str) -> str:
     """Normalize listing text before regex matching.
 
@@ -328,6 +382,14 @@ def title_has_excluded_market(title: str) -> str | None:
     return None
 
 
+def title_has_excluded_language(query: dict[str, object], title: str) -> str | None:
+    language = str(query.get("language", "")).lower()
+    for term in LANGUAGE_EXCLUSION_TERMS.get(language, []):
+        if title_has_phrase(title, term):
+            return term
+    return None
+
+
 def title_has_phrase(title: str, phrase: str) -> bool:
     title_text = normalized_search_text(title)
     phrase_parts = re.findall(r"[a-z0-9]+", normalized_search_text(phrase))
@@ -356,6 +418,10 @@ def filter_reasons(query: dict[str, object], row: dict[str, str]) -> list[str]:
     excluded_market = title_has_excluded_market(title)
     if excluded_market:
         reasons.append(f"title_excluded_market:{excluded_market}")
+
+    excluded_language = title_has_excluded_language(query, title)
+    if excluded_language:
+        reasons.append(f"title_excluded_language:{excluded_language}")
 
     feedback_score = parse_float(row["seller_feedback_score"])
     if feedback_score is None or feedback_score < MIN_SELLER_FEEDBACK_SCORE:
@@ -400,7 +466,7 @@ def flatten_item(query: dict[str, object], result_count: int, item: dict[str, ob
 
     return {
         "query_label": str(query["label"]),
-        "query": str(query["query"]),
+        "query": search_query_text(query),
         "result_count": str(result_count),
         "item_id": value(item, "itemId"),
         "legacy_item_id": value(item, "legacyItemId"),
