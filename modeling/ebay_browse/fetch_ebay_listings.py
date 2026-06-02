@@ -68,6 +68,8 @@ def build_query(card: Card, set_catalog: SetCatalog, limit: int) -> dict[str, ob
 
     return {
         "label": slugify("_".join(label_parts)),
+        "card_id": card.id,
+        "set_catalog_id": set_catalog.id,
         "language": language,
         "pokemon_name": pokemon_name,
         "card_number": card.card_number or "",
@@ -114,6 +116,11 @@ def parse_args() -> argparse.Namespace:
         "--dry-run",
         action="store_true",
         help="Print generated queries without calling eBay.",
+    )
+    parser.add_argument(
+        "--ingest",
+        action="store_true",
+        help="Ingest the completed fetch run into SQLite after writing TSV files.",
     )
     return parser.parse_args()
 
@@ -162,6 +169,7 @@ def main() -> None:
     variation_rows = []
     seen_variation_item_ids = set()
     browse_call_count = 0
+    query_metadata = []
     summary_lines = [
         "eBay Browse API set listing search",
         f"Fetched at UTC: {timestamp}",
@@ -214,6 +222,18 @@ def main() -> None:
             f"{query['label']}: total={result_count}, exported={len(items)}, "
             f"accepted={query_accepted}, rejected={query_rejected}, variations={query_variations}"
         )
+        query_metadata.append(
+            {
+                **query,
+                "query_text": search_query_text(query),
+                "result_total": result_count,
+                "result_exported": len(items),
+                "accepted_count": query_accepted,
+                "rejected_count": query_rejected,
+                "variation_count": query_variations,
+                "raw_json_path": str(raw_path),
+            }
+        )
 
     summary_lines.extend(
         [
@@ -227,6 +247,7 @@ def main() -> None:
     filtered_tsv_path = run_dir / f"{timestamp}_{output_label}_ebay_listings_filtered.tsv"
     rejected_tsv_path = run_dir / f"{timestamp}_{output_label}_ebay_listings_rejected.tsv"
     variations_tsv_path = run_dir / f"{timestamp}_{output_label}_ebay_listings_variations.tsv"
+    metadata_path = run_dir / f"{timestamp}_{output_label}_ebay_listings_metadata.json"
     write_tsv(tsv_path, TSV_COLUMNS, rows)
     write_tsv(filtered_tsv_path, FILTERED_TSV_COLUMNS, accepted_rows)
     write_tsv(rejected_tsv_path, FILTERED_TSV_COLUMNS, rejected_rows)
@@ -242,15 +263,48 @@ def main() -> None:
 
     summary_path = run_dir / f"{timestamp}_{output_label}_ebay_listings_summary.txt"
     summary_path.write_text("\n".join(summary_lines) + "\n", encoding="utf-8")
+    metadata = {
+        "timestamp": timestamp,
+        "set_code": args.set_code,
+        "set_name": args.set_name,
+        "set_catalog_id": queries[0].get("set_catalog_id"),
+        "query_limit": args.limit,
+        "query_count": len(queries),
+        "browse_call_count": browse_call_count,
+        "output_dir": str(run_dir),
+        "files": {
+            "all": str(tsv_path),
+            "filtered": str(filtered_tsv_path),
+            "rejected": str(rejected_tsv_path),
+            "variations": str(variations_tsv_path),
+            "summary": str(summary_path),
+            "rate_limits": str(rate_limit_path),
+        },
+        "queries": query_metadata,
+    }
+    metadata_path.write_text(json.dumps(metadata, indent=2, sort_keys=True), encoding="utf-8")
 
     print(f"Wrote {len(rows)} rows to {tsv_path}")
     print(f"Wrote {len(accepted_rows)} accepted rows to {filtered_tsv_path}")
     print(f"Wrote {len(rejected_rows)} rejected rows to {rejected_tsv_path}")
     print(f"Wrote {len(variation_rows)} unique variation rows to {variations_tsv_path}")
     print(f"Wrote summary to {summary_path}")
+    print(f"Wrote metadata to {metadata_path}")
     print(f"Wrote raw JSON files to {raw_dir}")
     for line in rate_limit_lines:
         print(line)
+
+    if args.ingest:
+        from ingest_ebay_listings import ingest_run
+
+        result = ingest_run(run_dir=run_dir, db_path=args.db_path)
+        print(
+            "Ingested run "
+            f"{result['fetch_run_id']}: "
+            f"{result['listings']} listings, "
+            f"{result['matches']} matches, "
+            f"{result['price_snapshots']} price snapshots"
+        )
 
 
 if __name__ == "__main__":

@@ -38,6 +38,14 @@ For testing a small batch:
 
 C:\Users\Lee\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe modeling\ebay_browse\fetch_ebay_listings.py --set-code CBB5C --set-name "Gem Pack Vol. 5" --max-cards 5
 
+To fetch and immediately ingest the run into SQLite:
+
+C:\Users\Lee\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe modeling\ebay_browse\fetch_ebay_listings.py --set-code CBB5C --set-name "Gem Pack Vol. 5" --ingest
+
+To ingest an existing timestamped run folder:
+
+C:\Users\Lee\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe modeling\ebay_browse\ingest_ebay_listings.py --run-dir modeling\ebay_browse\output\YYYYMMDD_HHMMSS_SET
+
 Outputs
 
 - output\YYYYMMDD_HHMMSS_ebay_browse_houndoom_results.tsv
@@ -47,5 +55,6 @@ Outputs
 - output\YYYYMMDD_HHMMSS_SET\YYYYMMDD_HHMMSS_SET_ebay_listings_rejected.tsv
 - output\YYYYMMDD_HHMMSS_SET\YYYYMMDD_HHMMSS_SET_ebay_listings_variations.tsv
 - output\YYYYMMDD_HHMMSS_SET\YYYYMMDD_HHMMSS_SET_ebay_listings_summary.txt
+- output\YYYYMMDD_HHMMSS_SET\YYYYMMDD_HHMMSS_SET_ebay_listings_metadata.json
 - output\YYYYMMDD_HHMMSS_SET\raw\YYYYMMDD_HHMMSS_LABEL.json
 - output\raw\YYYYMMDD_HHMMSS_LABEL.json
