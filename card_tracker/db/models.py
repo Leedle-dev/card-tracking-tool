@@ -51,6 +51,9 @@ class Card(Base):
     graded_price_records: Mapped[list[GradedPriceRecord]] = relationship(back_populates="card", cascade="all, delete-orphan")
     grading_ev_runs: Mapped[list[GradingEvRun]] = relationship(back_populates="card", cascade="all, delete-orphan")
     population_snapshots: Mapped[list[GradePopulationSnapshot]] = relationship(back_populates="card", cascade="all, delete-orphan")
+    marketplace_listing_queries: Mapped[list[MarketplaceListingQuery]] = relationship(back_populates="card", cascade="all, delete-orphan")
+    marketplace_listing_matches: Mapped[list[MarketplaceListingMatch]] = relationship(back_populates="card", cascade="all, delete-orphan")
+    marketplace_price_snapshots: Mapped[list[MarketplacePriceSnapshot]] = relationship(back_populates="card", cascade="all, delete-orphan")
     equivalent_links: Mapped[list[CardEquivalent]] = relationship(
         back_populates="card",
         cascade="all, delete-orphan",
@@ -132,6 +135,7 @@ class SetCatalog(Base):
     updated_at: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("CURRENT_TIMESTAMP"))
 
     cards: Mapped[list[Card]] = relationship(back_populates="set_catalog")
+    marketplace_listing_fetch_runs: Mapped[list[MarketplaceListingFetchRun]] = relationship(back_populates="set_catalog")
 
 
 class CardImage(Base):
@@ -179,6 +183,8 @@ class MarketplaceSource(Base):
 
     raw_price_records: Mapped[list[RawPriceRecord]] = relationship(back_populates="source")
     graded_price_records: Mapped[list[GradedPriceRecord]] = relationship(back_populates="source")
+    marketplace_listing_fetch_runs: Mapped[list[MarketplaceListingFetchRun]] = relationship(back_populates="marketplace_source")
+    marketplace_listings: Mapped[list[MarketplaceListing]] = relationship(back_populates="source")
 
 
 class GradingCompany(Base):
@@ -445,6 +451,174 @@ class GradeRateReferenceData(Base):
     grading_company: Mapped[GradingCompany] = relationship(back_populates="grade_rate_reference_rows")
     source_card: Mapped[Card | None] = relationship(back_populates="grade_rate_reference_rows")
     source_snapshot: Mapped[GradePopulationSnapshot | None] = relationship(back_populates="grade_rate_reference_rows")
+
+
+class MarketplaceListingFetchRun(Base):
+    __tablename__ = "marketplace_listing_fetch_runs"
+    __table_args__ = (
+        CheckConstraint("query_limit > 0", name="ck_marketplace_listing_runs_query_limit_positive"),
+        CheckConstraint("query_count >= 0", name="ck_marketplace_listing_runs_query_count_nonnegative"),
+        Index("idx_marketplace_listing_runs_set", "set_catalog_id", "started_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    marketplace_source_id: Mapped[int] = mapped_column(ForeignKey("marketplace_sources.id"), nullable=False)
+    set_catalog_id: Mapped[int | None] = mapped_column(ForeignKey("set_catalog.id", ondelete="SET NULL"))
+    started_at: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("CURRENT_TIMESTAMP"))
+    completed_at: Mapped[str | None] = mapped_column(Text)
+    query_limit: Mapped[int] = mapped_column(Integer, nullable=False, default=200)
+    query_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    output_dir: Mapped[str | None] = mapped_column(Text)
+    notes: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("CURRENT_TIMESTAMP"))
+
+    marketplace_source: Mapped[MarketplaceSource] = relationship(back_populates="marketplace_listing_fetch_runs")
+    set_catalog: Mapped[SetCatalog | None] = relationship(back_populates="marketplace_listing_fetch_runs")
+    queries: Mapped[list[MarketplaceListingQuery]] = relationship(back_populates="fetch_run", cascade="all, delete-orphan")
+    listings: Mapped[list[MarketplaceListing]] = relationship(back_populates="fetch_run", cascade="all, delete-orphan")
+    price_snapshots: Mapped[list[MarketplacePriceSnapshot]] = relationship(back_populates="fetch_run", cascade="all, delete-orphan")
+
+
+class MarketplaceListingQuery(Base):
+    __tablename__ = "marketplace_listing_queries"
+    __table_args__ = (
+        CheckConstraint("result_total >= 0", name="ck_marketplace_listing_queries_result_total_nonnegative"),
+        CheckConstraint("result_exported >= 0", name="ck_marketplace_listing_queries_result_exported_nonnegative"),
+        CheckConstraint("accepted_count >= 0", name="ck_marketplace_listing_queries_accepted_nonnegative"),
+        CheckConstraint("rejected_count >= 0", name="ck_marketplace_listing_queries_rejected_nonnegative"),
+        CheckConstraint("variation_count >= 0", name="ck_marketplace_listing_queries_variation_nonnegative"),
+        Index("idx_marketplace_listing_queries_run_card", "fetch_run_id", "card_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    fetch_run_id: Mapped[int] = mapped_column(ForeignKey("marketplace_listing_fetch_runs.id", ondelete="CASCADE"), nullable=False)
+    card_id: Mapped[int] = mapped_column(ForeignKey("cards.id", ondelete="CASCADE"), nullable=False)
+    query_text: Mapped[str] = mapped_column(Text, nullable=False)
+    result_total: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    result_exported: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    accepted_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    rejected_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    variation_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("CURRENT_TIMESTAMP"))
+
+    fetch_run: Mapped[MarketplaceListingFetchRun] = relationship(back_populates="queries")
+    card: Mapped[Card] = relationship(back_populates="marketplace_listing_queries")
+    matches: Mapped[list[MarketplaceListingMatch]] = relationship(back_populates="query", cascade="all, delete-orphan")
+
+
+class MarketplaceListing(Base):
+    __tablename__ = "marketplace_listings"
+    __table_args__ = (
+        CheckConstraint("price_cents IS NULL OR price_cents >= 0", name="ck_marketplace_listings_price_nonnegative"),
+        CheckConstraint("shipping_cents IS NULL OR shipping_cents >= 0", name="ck_marketplace_listings_shipping_nonnegative"),
+        CheckConstraint("total_price_cents IS NULL OR total_price_cents >= 0", name="ck_marketplace_listings_total_price_nonnegative"),
+        CheckConstraint("is_variation_listing IN (0, 1)", name="ck_marketplace_listings_variation_bool"),
+        CheckConstraint("seller_feedback_score IS NULL OR seller_feedback_score >= 0", name="ck_marketplace_listings_feedback_score_nonnegative"),
+        CheckConstraint(
+            "seller_feedback_percentage IS NULL OR (seller_feedback_percentage >= 0 AND seller_feedback_percentage <= 100)",
+            name="ck_marketplace_listings_feedback_percentage_range",
+        ),
+        UniqueConstraint("fetch_run_id", "external_item_id"),
+        Index("idx_marketplace_listings_run_source", "fetch_run_id", "source_id"),
+        Index("idx_marketplace_listings_external_item", "source_id", "external_item_id"),
+        Index("idx_marketplace_listings_price", "total_price_cents", "currency"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    fetch_run_id: Mapped[int] = mapped_column(ForeignKey("marketplace_listing_fetch_runs.id", ondelete="CASCADE"), nullable=False)
+    source_id: Mapped[int] = mapped_column(ForeignKey("marketplace_sources.id"), nullable=False)
+    external_item_id: Mapped[str] = mapped_column(Text, nullable=False)
+    legacy_item_id: Mapped[str | None] = mapped_column(Text)
+    item_web_url: Mapped[str | None] = mapped_column(Text)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    condition: Mapped[str | None] = mapped_column(Text)
+    buying_options: Mapped[str | None] = mapped_column(Text)
+    price_cents: Mapped[int | None] = mapped_column(Integer)
+    shipping_cents: Mapped[int | None] = mapped_column(Integer)
+    total_price_cents: Mapped[int | None] = mapped_column(Integer)
+    currency: Mapped[str] = mapped_column(Text, nullable=False, default="USD")
+    is_variation_listing: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    item_group_href: Mapped[str | None] = mapped_column(Text)
+    item_group_type: Mapped[str | None] = mapped_column(Text)
+    item_location_country: Mapped[str | None] = mapped_column(Text)
+    seller_feedback_score: Mapped[int | None] = mapped_column(Integer)
+    seller_feedback_percentage: Mapped[float | None] = mapped_column(Float)
+    item_creation_date: Mapped[str | None] = mapped_column(Text)
+    item_end_date: Mapped[str | None] = mapped_column(Text)
+    image_url: Mapped[str | None] = mapped_column(Text)
+    raw_json_path: Mapped[str | None] = mapped_column(Text)
+    checked_at: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("CURRENT_TIMESTAMP"))
+    created_at: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("CURRENT_TIMESTAMP"))
+
+    fetch_run: Mapped[MarketplaceListingFetchRun] = relationship(back_populates="listings")
+    source: Mapped[MarketplaceSource] = relationship(back_populates="marketplace_listings")
+    matches: Mapped[list[MarketplaceListingMatch]] = relationship(back_populates="listing", cascade="all, delete-orphan")
+
+
+class MarketplaceListingMatch(Base):
+    __tablename__ = "marketplace_listing_matches"
+    __table_args__ = (
+        CheckConstraint("match_status IN ('accepted', 'rejected', 'variation')", name="ck_marketplace_listing_matches_status"),
+        UniqueConstraint("listing_id", "query_id", "card_id"),
+        Index("idx_marketplace_listing_matches_card_status", "card_id", "match_status"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    listing_id: Mapped[int] = mapped_column(ForeignKey("marketplace_listings.id", ondelete="CASCADE"), nullable=False)
+    query_id: Mapped[int] = mapped_column(ForeignKey("marketplace_listing_queries.id", ondelete="CASCADE"), nullable=False)
+    card_id: Mapped[int] = mapped_column(ForeignKey("cards.id", ondelete="CASCADE"), nullable=False)
+    match_status: Mapped[str] = mapped_column(Text, nullable=False)
+    filter_reasons: Mapped[str | None] = mapped_column(Text)
+    filter_warnings: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("CURRENT_TIMESTAMP"))
+
+    listing: Mapped[MarketplaceListing] = relationship(back_populates="matches")
+    query: Mapped[MarketplaceListingQuery] = relationship(back_populates="matches")
+    card: Mapped[Card] = relationship(back_populates="marketplace_listing_matches")
+
+
+class MarketplacePriceSnapshot(Base):
+    __tablename__ = "marketplace_price_snapshots"
+    __table_args__ = (
+        CheckConstraint("listing_count >= 0", name="ck_marketplace_price_snapshots_listing_count_nonnegative"),
+        CheckConstraint("min_total_cents IS NULL OR min_total_cents >= 0", name="ck_marketplace_price_snapshots_min_nonnegative"),
+        CheckConstraint("max_total_cents IS NULL OR max_total_cents >= 0", name="ck_marketplace_price_snapshots_max_nonnegative"),
+        CheckConstraint("mean_total_cents IS NULL OR mean_total_cents >= 0", name="ck_marketplace_price_snapshots_mean_nonnegative"),
+        CheckConstraint("median_total_cents IS NULL OR median_total_cents >= 0", name="ck_marketplace_price_snapshots_median_nonnegative"),
+        CheckConstraint("stddev_total_cents IS NULL OR stddev_total_cents >= 0", name="ck_marketplace_price_snapshots_stddev_nonnegative"),
+        CheckConstraint("p10_total_cents IS NULL OR p10_total_cents >= 0", name="ck_marketplace_price_snapshots_p10_nonnegative"),
+        CheckConstraint("p25_total_cents IS NULL OR p25_total_cents >= 0", name="ck_marketplace_price_snapshots_p25_nonnegative"),
+        CheckConstraint("p75_total_cents IS NULL OR p75_total_cents >= 0", name="ck_marketplace_price_snapshots_p75_nonnegative"),
+        CheckConstraint("p90_total_cents IS NULL OR p90_total_cents >= 0", name="ck_marketplace_price_snapshots_p90_nonnegative"),
+        CheckConstraint("iqr_total_cents IS NULL OR iqr_total_cents >= 0", name="ck_marketplace_price_snapshots_iqr_nonnegative"),
+        CheckConstraint("trimmed_mean_total_cents IS NULL OR trimmed_mean_total_cents >= 0", name="ck_marketplace_price_snapshots_trimmed_mean_nonnegative"),
+        CheckConstraint("domestic_listing_count >= 0", name="ck_marketplace_price_snapshots_domestic_count_nonnegative"),
+        CheckConstraint("international_listing_count >= 0", name="ck_marketplace_price_snapshots_international_count_nonnegative"),
+        UniqueConstraint("fetch_run_id", "card_id"),
+        Index("idx_marketplace_price_snapshots_card", "card_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    fetch_run_id: Mapped[int] = mapped_column(ForeignKey("marketplace_listing_fetch_runs.id", ondelete="CASCADE"), nullable=False)
+    card_id: Mapped[int] = mapped_column(ForeignKey("cards.id", ondelete="CASCADE"), nullable=False)
+    listing_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    min_total_cents: Mapped[int | None] = mapped_column(Integer)
+    max_total_cents: Mapped[int | None] = mapped_column(Integer)
+    mean_total_cents: Mapped[float | None] = mapped_column(Float)
+    median_total_cents: Mapped[float | None] = mapped_column(Float)
+    stddev_total_cents: Mapped[float | None] = mapped_column(Float)
+    p10_total_cents: Mapped[float | None] = mapped_column(Float)
+    p25_total_cents: Mapped[float | None] = mapped_column(Float)
+    p75_total_cents: Mapped[float | None] = mapped_column(Float)
+    p90_total_cents: Mapped[float | None] = mapped_column(Float)
+    iqr_total_cents: Mapped[float | None] = mapped_column(Float)
+    trimmed_mean_total_cents: Mapped[float | None] = mapped_column(Float)
+    domestic_listing_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    international_listing_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("CURRENT_TIMESTAMP"))
+
+    fetch_run: Mapped[MarketplaceListingFetchRun] = relationship(back_populates="price_snapshots")
+    card: Mapped[Card] = relationship(back_populates="marketplace_price_snapshots")
 
 
 class GradeRateReferenceGroup(Base):

@@ -297,6 +297,109 @@ CREATE TABLE IF NOT EXISTS grade_rate_reference_groups (
     FOREIGN KEY (grading_company_id) REFERENCES grading_companies(id)
 );
 
+CREATE TABLE IF NOT EXISTS marketplace_listing_fetch_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    marketplace_source_id INTEGER NOT NULL,
+    set_catalog_id INTEGER,
+    started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at TEXT,
+    query_limit INTEGER NOT NULL DEFAULT 200 CHECK (query_limit > 0),
+    query_count INTEGER NOT NULL DEFAULT 0 CHECK (query_count >= 0),
+    output_dir TEXT,
+    notes TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (marketplace_source_id) REFERENCES marketplace_sources(id),
+    FOREIGN KEY (set_catalog_id) REFERENCES set_catalog(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS marketplace_listing_queries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    fetch_run_id INTEGER NOT NULL,
+    card_id INTEGER NOT NULL,
+    query_text TEXT NOT NULL,
+    result_total INTEGER NOT NULL DEFAULT 0 CHECK (result_total >= 0),
+    result_exported INTEGER NOT NULL DEFAULT 0 CHECK (result_exported >= 0),
+    accepted_count INTEGER NOT NULL DEFAULT 0 CHECK (accepted_count >= 0),
+    rejected_count INTEGER NOT NULL DEFAULT 0 CHECK (rejected_count >= 0),
+    variation_count INTEGER NOT NULL DEFAULT 0 CHECK (variation_count >= 0),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (fetch_run_id) REFERENCES marketplace_listing_fetch_runs(id) ON DELETE CASCADE,
+    FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS marketplace_listings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    fetch_run_id INTEGER NOT NULL,
+    source_id INTEGER NOT NULL,
+    external_item_id TEXT NOT NULL,
+    legacy_item_id TEXT,
+    item_web_url TEXT,
+    title TEXT NOT NULL,
+    condition TEXT,
+    buying_options TEXT,
+    price_cents INTEGER CHECK (price_cents IS NULL OR price_cents >= 0),
+    shipping_cents INTEGER CHECK (shipping_cents IS NULL OR shipping_cents >= 0),
+    total_price_cents INTEGER CHECK (total_price_cents IS NULL OR total_price_cents >= 0),
+    currency TEXT NOT NULL DEFAULT 'USD',
+    is_variation_listing INTEGER NOT NULL DEFAULT 0 CHECK (is_variation_listing IN (0, 1)),
+    item_group_href TEXT,
+    item_group_type TEXT,
+    item_location_country TEXT,
+    seller_feedback_score INTEGER CHECK (seller_feedback_score IS NULL OR seller_feedback_score >= 0),
+    seller_feedback_percentage REAL CHECK (
+        seller_feedback_percentage IS NULL
+        OR (seller_feedback_percentage >= 0 AND seller_feedback_percentage <= 100)
+    ),
+    item_creation_date TEXT,
+    item_end_date TEXT,
+    image_url TEXT,
+    raw_json_path TEXT,
+    checked_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (fetch_run_id) REFERENCES marketplace_listing_fetch_runs(id) ON DELETE CASCADE,
+    FOREIGN KEY (source_id) REFERENCES marketplace_sources(id),
+    UNIQUE (fetch_run_id, external_item_id)
+);
+
+CREATE TABLE IF NOT EXISTS marketplace_listing_matches (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    listing_id INTEGER NOT NULL,
+    query_id INTEGER NOT NULL,
+    card_id INTEGER NOT NULL,
+    match_status TEXT NOT NULL CHECK (match_status IN ('accepted', 'rejected', 'variation')),
+    filter_reasons TEXT,
+    filter_warnings TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (listing_id) REFERENCES marketplace_listings(id) ON DELETE CASCADE,
+    FOREIGN KEY (query_id) REFERENCES marketplace_listing_queries(id) ON DELETE CASCADE,
+    FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE,
+    UNIQUE (listing_id, query_id, card_id)
+);
+
+CREATE TABLE IF NOT EXISTS marketplace_price_snapshots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    fetch_run_id INTEGER NOT NULL,
+    card_id INTEGER NOT NULL,
+    listing_count INTEGER NOT NULL DEFAULT 0 CHECK (listing_count >= 0),
+    min_total_cents INTEGER CHECK (min_total_cents IS NULL OR min_total_cents >= 0),
+    max_total_cents INTEGER CHECK (max_total_cents IS NULL OR max_total_cents >= 0),
+    mean_total_cents REAL CHECK (mean_total_cents IS NULL OR mean_total_cents >= 0),
+    median_total_cents REAL CHECK (median_total_cents IS NULL OR median_total_cents >= 0),
+    stddev_total_cents REAL CHECK (stddev_total_cents IS NULL OR stddev_total_cents >= 0),
+    p10_total_cents REAL CHECK (p10_total_cents IS NULL OR p10_total_cents >= 0),
+    p25_total_cents REAL CHECK (p25_total_cents IS NULL OR p25_total_cents >= 0),
+    p75_total_cents REAL CHECK (p75_total_cents IS NULL OR p75_total_cents >= 0),
+    p90_total_cents REAL CHECK (p90_total_cents IS NULL OR p90_total_cents >= 0),
+    iqr_total_cents REAL CHECK (iqr_total_cents IS NULL OR iqr_total_cents >= 0),
+    trimmed_mean_total_cents REAL CHECK (trimmed_mean_total_cents IS NULL OR trimmed_mean_total_cents >= 0),
+    domestic_listing_count INTEGER NOT NULL DEFAULT 0 CHECK (domestic_listing_count >= 0),
+    international_listing_count INTEGER NOT NULL DEFAULT 0 CHECK (international_listing_count >= 0),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (fetch_run_id) REFERENCES marketplace_listing_fetch_runs(id) ON DELETE CASCADE,
+    FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE,
+    UNIQUE (fetch_run_id, card_id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_cards_search ON cards(name, card_number);
 DROP INDEX IF EXISTS idx_cards_sale_status;
 CREATE INDEX IF NOT EXISTS idx_cards_set_catalog_id ON cards(set_catalog_id);
@@ -337,6 +440,20 @@ CREATE INDEX IF NOT EXISTS idx_grade_rate_reference_groups_company
 ON grade_rate_reference_groups(grading_company_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_card_images_card_path_role
 ON card_images(card_id, image_path, image_role);
+CREATE INDEX IF NOT EXISTS idx_marketplace_listing_runs_set
+ON marketplace_listing_fetch_runs(set_catalog_id, started_at);
+CREATE INDEX IF NOT EXISTS idx_marketplace_listing_queries_run_card
+ON marketplace_listing_queries(fetch_run_id, card_id);
+CREATE INDEX IF NOT EXISTS idx_marketplace_listings_run_source
+ON marketplace_listings(fetch_run_id, source_id);
+CREATE INDEX IF NOT EXISTS idx_marketplace_listings_external_item
+ON marketplace_listings(source_id, external_item_id);
+CREATE INDEX IF NOT EXISTS idx_marketplace_listings_price
+ON marketplace_listings(total_price_cents, currency);
+CREATE INDEX IF NOT EXISTS idx_marketplace_listing_matches_card_status
+ON marketplace_listing_matches(card_id, match_status);
+CREATE INDEX IF NOT EXISTS idx_marketplace_price_snapshots_card
+ON marketplace_price_snapshots(card_id, created_at);
 
 CREATE TRIGGER IF NOT EXISTS trg_cards_updated_at
 AFTER UPDATE ON cards
