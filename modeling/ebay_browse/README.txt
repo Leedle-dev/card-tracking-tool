@@ -24,8 +24,26 @@ Example
 
 C:\Users\Lee\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe modeling\ebay_browse\fetch_houndoom_browse.py
 
+Generic Set Fetch
+
+To fetch eBay listings for every card in a set already imported into SQLite:
+
+C:\Users\Lee\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe modeling\ebay_browse\fetch_ebay_listings.py --set-code CBB5C --set-name "Gem Pack Vol. 5"
+
+To preview generated queries without calling eBay:
+
+C:\Users\Lee\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe modeling\ebay_browse\fetch_ebay_listings.py --set-code CBB5C --set-name "Gem Pack Vol. 5" --dry-run
+
+For testing a small batch:
+
+C:\Users\Lee\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe modeling\ebay_browse\fetch_ebay_listings.py --set-code CBB5C --set-name "Gem Pack Vol. 5" --max-cards 5
+
 Outputs
 
 - output\YYYYMMDD_HHMMSS_ebay_browse_houndoom_results.tsv
 - output\YYYYMMDD_HHMMSS_ebay_browse_houndoom_summary.txt
+- output\YYYYMMDD_HHMMSS_SET_ebay_listings.tsv
+- output\YYYYMMDD_HHMMSS_SET_ebay_listings_filtered.tsv
+- output\YYYYMMDD_HHMMSS_SET_ebay_listings_rejected.tsv
+- output\YYYYMMDD_HHMMSS_SET_ebay_listings_summary.txt
 - output\raw\YYYYMMDD_HHMMSS_LABEL.json
