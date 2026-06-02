@@ -42,8 +42,10 @@ Outputs
 
 - output\YYYYMMDD_HHMMSS_ebay_browse_houndoom_results.tsv
 - output\YYYYMMDD_HHMMSS_ebay_browse_houndoom_summary.txt
-- output\YYYYMMDD_HHMMSS_SET_ebay_listings.tsv
-- output\YYYYMMDD_HHMMSS_SET_ebay_listings_filtered.tsv
-- output\YYYYMMDD_HHMMSS_SET_ebay_listings_rejected.tsv
-- output\YYYYMMDD_HHMMSS_SET_ebay_listings_summary.txt
+- output\YYYYMMDD_HHMMSS_SET\YYYYMMDD_HHMMSS_SET_ebay_listings.tsv
+- output\YYYYMMDD_HHMMSS_SET\YYYYMMDD_HHMMSS_SET_ebay_listings_filtered.tsv
+- output\YYYYMMDD_HHMMSS_SET\YYYYMMDD_HHMMSS_SET_ebay_listings_rejected.tsv
+- output\YYYYMMDD_HHMMSS_SET\YYYYMMDD_HHMMSS_SET_ebay_listings_variations.tsv
+- output\YYYYMMDD_HHMMSS_SET\YYYYMMDD_HHMMSS_SET_ebay_listings_summary.txt
+- output\YYYYMMDD_HHMMSS_SET\raw\YYYYMMDD_HHMMSS_LABEL.json
 - output\raw\YYYYMMDD_HHMMSS_LABEL.json

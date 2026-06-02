@@ -11,15 +11,17 @@ import sys
 from sqlalchemy import func, select
 
 
+SCRIPT_DIR = Path(__file__).resolve().parent
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
 
 from card_tracker.db import session_scope
 from card_tracker.db.models import Card, SetCatalog
 from fetch_houndoom_browse import (
     FILTERED_TSV_COLUMNS,
-    RAW_DIR,
     TSV_COLUMNS,
     app_access_token,
     browse_search,
@@ -32,8 +34,9 @@ from fetch_houndoom_browse import (
 )
 
 
-OUTPUT_DIR = Path(__file__).resolve().parent / "output"
+OUTPUT_DIR = SCRIPT_DIR / "output"
 DEFAULT_LIMIT = 200
+VARIATION_TSV_COLUMNS = [*FILTERED_TSV_COLUMNS, "first_seen_query_label"]
 
 
 def slugify(text: str) -> str:
@@ -122,6 +125,10 @@ def write_tsv(path: Path, fieldnames: list[str], rows: list[dict[str, str]]) -> 
         writer.writerows(rows)
 
 
+def is_variation_row(row: dict[str, str]) -> bool:
+    return row.get("is_variation_listing") == "True" or bool(row.get("item_group_href"))
+
+
 def main() -> None:
     args = parse_args()
     if args.limit < 1 or args.limit > 200:
@@ -143,13 +150,17 @@ def main() -> None:
         print(f"Generated {len(queries)} eBay queries.")
         return
 
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    RAW_DIR.mkdir(parents=True, exist_ok=True)
+    run_dir = OUTPUT_DIR / f"{timestamp}_{output_label}"
+    raw_dir = run_dir / "raw"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    raw_dir.mkdir(parents=True, exist_ok=True)
 
     access_token = app_access_token()
     rows = []
     accepted_rows = []
     rejected_rows = []
+    variation_rows = []
+    seen_variation_item_ids = set()
     browse_call_count = 0
     summary_lines = [
         "eBay Browse API set listing search",
@@ -164,7 +175,7 @@ def main() -> None:
     for query in queries:
         payload = browse_search(access_token, query)
         browse_call_count += 1
-        raw_path = RAW_DIR / f"{timestamp}_{query['label']}.json"
+        raw_path = raw_dir / f"{timestamp}_{query['label']}.json"
         raw_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
 
         items = payload.get("itemSummaries", [])
@@ -173,10 +184,10 @@ def main() -> None:
         result_count = int(payload.get("total", len(items)) or 0)
         query_accepted = 0
         query_rejected = 0
+        query_variations = 0
         for item in items:
             if isinstance(item, dict):
                 row = flatten_item(query, result_count, item)
-                rows.append(row)
                 reasons = filter_reasons(query, row)
                 warnings = filter_warnings(query, row)
                 filtered_row = {
@@ -184,6 +195,15 @@ def main() -> None:
                     "filter_reasons": ";".join(reasons),
                     "filter_warnings": ";".join(warnings),
                 }
+                if is_variation_row(row):
+                    query_variations += 1
+                    item_id = row["item_id"]
+                    if item_id not in seen_variation_item_ids:
+                        seen_variation_item_ids.add(item_id)
+                        variation_rows.append({**filtered_row, "first_seen_query_label": str(query["label"])})
+                    continue
+
+                rows.append(row)
                 if reasons:
                     rejected_rows.append(filtered_row)
                     query_rejected += 1
@@ -192,7 +212,7 @@ def main() -> None:
                     query_accepted += 1
         summary_lines.append(
             f"{query['label']}: total={result_count}, exported={len(items)}, "
-            f"accepted={query_accepted}, rejected={query_rejected}"
+            f"accepted={query_accepted}, rejected={query_rejected}, variations={query_variations}"
         )
 
     summary_lines.extend(
@@ -203,29 +223,32 @@ def main() -> None:
         ]
     )
 
-    tsv_path = OUTPUT_DIR / f"{timestamp}_{output_label}_ebay_listings.tsv"
-    filtered_tsv_path = OUTPUT_DIR / f"{timestamp}_{output_label}_ebay_listings_filtered.tsv"
-    rejected_tsv_path = OUTPUT_DIR / f"{timestamp}_{output_label}_ebay_listings_rejected.tsv"
+    tsv_path = run_dir / f"{timestamp}_{output_label}_ebay_listings.tsv"
+    filtered_tsv_path = run_dir / f"{timestamp}_{output_label}_ebay_listings_filtered.tsv"
+    rejected_tsv_path = run_dir / f"{timestamp}_{output_label}_ebay_listings_rejected.tsv"
+    variations_tsv_path = run_dir / f"{timestamp}_{output_label}_ebay_listings_variations.tsv"
     write_tsv(tsv_path, TSV_COLUMNS, rows)
     write_tsv(filtered_tsv_path, FILTERED_TSV_COLUMNS, accepted_rows)
     write_tsv(rejected_tsv_path, FILTERED_TSV_COLUMNS, rejected_rows)
+    write_tsv(variations_tsv_path, VARIATION_TSV_COLUMNS, variation_rows)
 
     rate_limit_payload, rate_limit_error = fetch_rate_limits(access_token)
     rate_limit_lines = format_rate_limit_lines(rate_limit_payload, rate_limit_error)
     summary_lines.extend(rate_limit_lines)
 
-    rate_limit_path = RAW_DIR / f"{timestamp}_{output_label}_ebay_rate_limits.json"
+    rate_limit_path = raw_dir / f"{timestamp}_{output_label}_ebay_rate_limits.json"
     if rate_limit_payload is not None:
         rate_limit_path.write_text(json.dumps(rate_limit_payload, indent=2, sort_keys=True), encoding="utf-8")
 
-    summary_path = OUTPUT_DIR / f"{timestamp}_{output_label}_ebay_listings_summary.txt"
+    summary_path = run_dir / f"{timestamp}_{output_label}_ebay_listings_summary.txt"
     summary_path.write_text("\n".join(summary_lines) + "\n", encoding="utf-8")
 
     print(f"Wrote {len(rows)} rows to {tsv_path}")
     print(f"Wrote {len(accepted_rows)} accepted rows to {filtered_tsv_path}")
     print(f"Wrote {len(rejected_rows)} rejected rows to {rejected_tsv_path}")
+    print(f"Wrote {len(variation_rows)} unique variation rows to {variations_tsv_path}")
     print(f"Wrote summary to {summary_path}")
-    print(f"Wrote raw JSON files to {RAW_DIR}")
+    print(f"Wrote raw JSON files to {raw_dir}")
     for line in rate_limit_lines:
         print(line)
 
