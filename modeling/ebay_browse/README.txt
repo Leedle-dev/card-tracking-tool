@@ -46,6 +46,10 @@ To ingest an existing timestamped run folder:
 
 C:\Users\Lee\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe modeling\ebay_browse\ingest_ebay_listings.py --run-dir modeling\ebay_browse\output\YYYYMMDD_HHMMSS_SET
 
+Older run folders created before metadata support need set fallback arguments:
+
+C:\Users\Lee\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe modeling\ebay_browse\ingest_ebay_listings.py --run-dir modeling\ebay_browse\output\YYYYMMDD_HHMMSS_SET --set-code CBB5C --set-name "Gem Pack Vol. 5"
+
 Outputs
 
 - output\YYYYMMDD_HHMMSS_ebay_browse_houndoom_results.tsv

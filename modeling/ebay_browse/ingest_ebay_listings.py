@@ -6,10 +6,11 @@ from pathlib import Path
 import argparse
 import csv
 import json
+import re
 import statistics
 import sys
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -25,7 +26,11 @@ from card_tracker.db.models import (
     MarketplaceListingQuery,
     MarketplacePriceSnapshot,
     MarketplaceSource,
+    Card,
+    SetCatalog,
 )
+from fetch_ebay_listings import build_query
+from fetch_houndoom_browse import search_query_text
 
 
 def parse_args() -> argparse.Namespace:
@@ -33,6 +38,13 @@ def parse_args() -> argparse.Namespace:
     # Example:
     #   python modeling/ebay_browse/ingest_ebay_listings.py --run-dir modeling/ebay_browse/output/20260602_000000_cbb5c_gem_pack_vol_5
     parser.add_argument("--run-dir", required=True, type=Path, help="Timestamped eBay output directory to ingest.")
+    parser.add_argument("--set-code", help="Fallback set code for older run folders without metadata.")
+    parser.add_argument("--set-name", help="Fallback set name for older run folders without metadata.")
+    parser.add_argument(
+        "--allow-duplicate",
+        action="store_true",
+        help="Allow ingesting a run folder that is already recorded in SQLite.",
+    )
     parser.add_argument(
         "--db-path",
         type=Path,
@@ -81,13 +93,118 @@ def read_tsv(path: Path) -> list[dict[str, str]]:
         return list(csv.DictReader(file, delimiter="\t"))
 
 
-def load_metadata(run_dir: Path) -> dict[str, object]:
+def find_one(run_dir: Path, pattern: str) -> Path:
+    matches = sorted(run_dir.glob(pattern))
+    if not matches:
+        raise SystemExit(f"No {pattern} file found in {run_dir}")
+    if len(matches) > 1:
+        raise SystemExit(f"Multiple {pattern} files found in {run_dir}; expected exactly one.")
+    return matches[0]
+
+
+def load_metadata(run_dir: Path) -> dict[str, object] | None:
     matches = sorted(run_dir.glob("*_ebay_listings_metadata.json"))
     if not matches:
-        raise SystemExit(f"No *_ebay_listings_metadata.json file found in {run_dir}")
+        return None
     if len(matches) > 1:
         raise SystemExit(f"Multiple metadata files found in {run_dir}; expected exactly one.")
     return json.loads(matches[0].read_text(encoding="utf-8"))
+
+
+def load_fallback_queries(set_code: str, set_name: str, db_path: Path, limit: int) -> list[dict[str, object]]:
+    with session_scope(db_path=db_path) as session:
+        statement = (
+            select(Card, SetCatalog)
+            .join(SetCatalog, Card.set_catalog_id == SetCatalog.id)
+            .where(func.lower(SetCatalog.set_code) == set_code.lower())
+            .where(func.lower(SetCatalog.set_name) == set_name.lower())
+            .order_by(Card.source_sequence, Card.card_number, Card.id)
+        )
+        rows = session.execute(statement).all()
+        return [build_query(card, set_catalog, limit) for card, set_catalog in rows]
+
+
+def load_run_rows(run_dir: Path, files: dict[str, str] | None = None) -> dict[str, list[dict[str, str]]]:
+    if files:
+        return {
+            "accepted": read_tsv(Path(str(files["filtered"]))),
+            "rejected": read_tsv(Path(str(files["rejected"]))),
+            "variation": read_tsv(Path(str(files["variations"]))),
+        }
+    return {
+        "accepted": read_tsv(find_one(run_dir, "*_ebay_listings_filtered.tsv")),
+        "rejected": read_tsv(find_one(run_dir, "*_ebay_listings_rejected.tsv")),
+        "variation": read_tsv(find_one(run_dir, "*_ebay_listings_variations.tsv")),
+    }
+
+
+def infer_timestamp(run_dir: Path) -> str:
+    match = re.match(r"(\d{8}_\d{6})", run_dir.name)
+    return match.group(1) if match else datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+
+
+def fallback_metadata(run_dir: Path, db_path: Path, set_code: str | None, set_name: str | None) -> dict[str, object]:
+    if not set_code or not set_name:
+        raise SystemExit(
+            "No metadata file found. Re-run with --set-code and --set-name to ingest older output folders."
+        )
+
+    rows_by_status = load_run_rows(run_dir)
+    all_rows = rows_by_status["accepted"] + rows_by_status["rejected"] + rows_by_status["variation"]
+    result_totals = {}
+    exported_counts = {}
+    accepted_counts = {}
+    rejected_counts = {}
+    variation_counts = {}
+    for row in all_rows:
+        label = row.get("query_label") or row.get("first_seen_query_label")
+        if not label:
+            continue
+        result_totals[label] = max(result_totals.get(label, 0), int(row.get("result_count") or 0))
+        exported_counts[label] = exported_counts.get(label, 0) + 1
+    for row in rows_by_status["accepted"]:
+        accepted_counts[row["query_label"]] = accepted_counts.get(row["query_label"], 0) + 1
+    for row in rows_by_status["rejected"]:
+        rejected_counts[row["query_label"]] = rejected_counts.get(row["query_label"], 0) + 1
+    for row in rows_by_status["variation"]:
+        label = row.get("first_seen_query_label") or row.get("query_label")
+        variation_counts[label] = variation_counts.get(label, 0) + 1
+
+    queries = load_fallback_queries(set_code, set_name, db_path, 200)
+    query_metadata = []
+    for query in queries:
+        label = str(query["label"])
+        if label not in result_totals and label not in accepted_counts and label not in rejected_counts and label not in variation_counts:
+            continue
+        raw_json = sorted((run_dir / "raw").glob(f"*_{label}.json"))
+        query_metadata.append(
+            {
+                **query,
+                "query_text": search_query_text(query),
+                "result_total": result_totals.get(label, 0),
+                "result_exported": exported_counts.get(label, 0),
+                "accepted_count": accepted_counts.get(label, 0),
+                "rejected_count": rejected_counts.get(label, 0),
+                "variation_count": variation_counts.get(label, 0),
+                "raw_json_path": str(raw_json[0]) if raw_json else "",
+            }
+        )
+
+    if not query_metadata:
+        raise SystemExit("Could not reconstruct query metadata for this run folder.")
+
+    timestamp = infer_timestamp(run_dir)
+    return {
+        "timestamp": timestamp,
+        "set_code": set_code,
+        "set_name": set_name,
+        "set_catalog_id": query_metadata[0].get("set_catalog_id"),
+        "query_limit": 200,
+        "query_count": len(query_metadata),
+        "output_dir": str(run_dir),
+        "files": None,
+        "queries": query_metadata,
+    }
 
 
 def marketplace_source_id(session) -> int:
@@ -182,20 +299,38 @@ def snapshot_for_card(fetch_run_id: int, card_id: int, listings: list[Marketplac
     )
 
 
-def ingest_run(run_dir: Path, db_path: Path) -> dict[str, int]:
+def ingest_run(
+    run_dir: Path,
+    db_path: Path,
+    set_code: str | None = None,
+    set_name: str | None = None,
+    allow_duplicate: bool = False,
+) -> dict[str, int]:
     metadata = load_metadata(run_dir)
+    if metadata is None:
+        metadata = fallback_metadata(run_dir, db_path, set_code, set_name)
     files = metadata["files"]
     query_metadata = {str(query["label"]): query for query in metadata["queries"]}
     completed_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
+    loaded_rows = load_run_rows(run_dir, files if isinstance(files, dict) else None)
     rows_by_status = [
-        ("accepted", read_tsv(Path(str(files["filtered"])))),
-        ("rejected", read_tsv(Path(str(files["rejected"])))),
-        ("variation", read_tsv(Path(str(files["variations"])))),
+        ("accepted", loaded_rows["accepted"]),
+        ("rejected", loaded_rows["rejected"]),
+        ("variation", loaded_rows["variation"]),
     ]
 
     with session_scope(db_path=db_path) as session:
         source_id = marketplace_source_id(session)
+        existing_run = session.execute(
+            select(MarketplaceListingFetchRun).where(MarketplaceListingFetchRun.output_dir == str(run_dir))
+        ).scalar_one_or_none()
+        if existing_run is not None and not allow_duplicate:
+            raise SystemExit(
+                f"Run folder is already ingested as fetch_run_id={existing_run.id}. "
+                "Use --allow-duplicate only if you intentionally want another copy."
+            )
+
         fetch_run = MarketplaceListingFetchRun(
             marketplace_source_id=source_id,
             set_catalog_id=int(metadata["set_catalog_id"]) if metadata.get("set_catalog_id") else None,
@@ -283,7 +418,13 @@ def ingest_run(run_dir: Path, db_path: Path) -> dict[str, int]:
 
 def main() -> None:
     args = parse_args()
-    result = ingest_run(run_dir=args.run_dir, db_path=args.db_path)
+    result = ingest_run(
+        run_dir=args.run_dir,
+        db_path=args.db_path,
+        set_code=args.set_code,
+        set_name=args.set_name,
+        allow_duplicate=args.allow_duplicate,
+    )
     print(
         f"Ingested fetch_run_id={result['fetch_run_id']} "
         f"queries={result['queries']} "
