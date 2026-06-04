@@ -16,10 +16,10 @@ def parse_args() -> argparse.Namespace:
     )
     # Argument examples:
     #   --set-code CBB5C
-    #   --set-code CBB5C --shipping-cents 125 --marketplace-fee-rate 0.1325
+    #   --set-code CBB5C --shipping-cents 100 --marketplace-fee-rate 0.1325
     #   --output reports/inventory/cbb5c_inventory_profit_estimate.tsv
     parser.add_argument("--set-code", default="", help="Optional set code filter, such as CBB5C.")
-    parser.add_argument("--shipping-cents", type=int, default=125, help="Estimated shipping cost per card.")
+    parser.add_argument("--shipping-cents", type=int, default=100, help="Estimated shipping cost per card.")
     parser.add_argument(
         "--marketplace-fee-rate",
         type=float,
@@ -29,8 +29,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--minimum-cents",
         type=int,
-        default=75,
-        help="Minimum per-card estimated gross profit/listing basis after shipping.",
+        default=99,
+        help="Minimum no-shipping listing price per card.",
     )
     parser.add_argument(
         "--floor-increment-cents",
@@ -139,6 +139,7 @@ def write_report(rows: list[sqlite3.Row], args: argparse.Namespace, output_path:
         "min_total",
         "max_total",
         "estimated_shipping",
+        "LISTING_PRICE",
         "unit_gross_after_shipping",
         "unit_marketplace_fee",
         "unit_net_after_fee",
@@ -194,6 +195,7 @@ def write_report(rows: list[sqlite3.Row], args: argparse.Namespace, output_path:
                     "min_total": cents_to_dollars(row["min_total_cents"]),
                     "max_total": cents_to_dollars(row["max_total_cents"]),
                     "estimated_shipping": cents_to_dollars(args.shipping_cents),
+                    "LISTING_PRICE": cents_to_dollars(unit_gross_cents),
                     "unit_gross_after_shipping": cents_to_dollars(unit_gross_cents),
                     "unit_marketplace_fee": cents_to_dollars(unit_fee_cents),
                     "unit_net_after_fee": cents_to_dollars(unit_net_cents),
