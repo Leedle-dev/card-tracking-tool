@@ -455,6 +455,19 @@ CREATE TABLE IF NOT EXISTS marketplace_item_group_variations (
     UNIQUE (source_id, item_group_id, external_item_id)
 );
 
+CREATE TABLE IF NOT EXISTS marketplace_item_group_variation_matches (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    item_group_variation_id INTEGER NOT NULL,
+    fetch_run_id INTEGER,
+    card_id INTEGER NOT NULL,
+    match_reasons TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (item_group_variation_id) REFERENCES marketplace_item_group_variations(id) ON DELETE CASCADE,
+    FOREIGN KEY (fetch_run_id) REFERENCES marketplace_listing_fetch_runs(id) ON DELETE CASCADE,
+    FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE,
+    UNIQUE (item_group_variation_id, fetch_run_id, card_id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_cards_search ON cards(name, card_number);
 DROP INDEX IF EXISTS idx_cards_sale_status;
 CREATE INDEX IF NOT EXISTS idx_cards_set_catalog_id ON cards(set_catalog_id);
@@ -517,6 +530,10 @@ CREATE INDEX IF NOT EXISTS idx_marketplace_item_group_variations_item
 ON marketplace_item_group_variations(source_id, external_item_id);
 CREATE INDEX IF NOT EXISTS idx_marketplace_item_group_variations_price
 ON marketplace_item_group_variations(price_cents, currency);
+CREATE INDEX IF NOT EXISTS idx_marketplace_item_group_variation_matches_card
+ON marketplace_item_group_variation_matches(card_id, fetch_run_id);
+CREATE INDEX IF NOT EXISTS idx_marketplace_item_group_variation_matches_variation
+ON marketplace_item_group_variation_matches(item_group_variation_id);
 
 CREATE TRIGGER IF NOT EXISTS trg_cards_updated_at
 AFTER UPDATE ON cards

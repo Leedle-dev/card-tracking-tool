@@ -486,6 +486,10 @@ class MarketplaceListingFetchRun(Base):
         back_populates="fetch_run",
         cascade="all, delete-orphan",
     )
+    item_group_variation_matches: Mapped[list[MarketplaceItemGroupVariationMatch]] = relationship(
+        back_populates="fetch_run",
+        cascade="all, delete-orphan",
+    )
 
 
 class MarketplaceListingQuery(Base):
@@ -627,6 +631,35 @@ class MarketplaceItemGroupVariation(Base):
     created_at: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("CURRENT_TIMESTAMP"))
 
     source: Mapped[MarketplaceSource] = relationship(back_populates="marketplace_item_group_variations")
+    matches: Mapped[list[MarketplaceItemGroupVariationMatch]] = relationship(
+        back_populates="item_group_variation",
+        cascade="all, delete-orphan",
+    )
+
+
+class MarketplaceItemGroupVariationMatch(Base):
+    __tablename__ = "marketplace_item_group_variation_matches"
+    __table_args__ = (
+        UniqueConstraint("item_group_variation_id", "fetch_run_id", "card_id"),
+        Index("idx_marketplace_item_group_variation_matches_card", "card_id", "fetch_run_id"),
+        Index("idx_marketplace_item_group_variation_matches_variation", "item_group_variation_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    item_group_variation_id: Mapped[int] = mapped_column(
+        ForeignKey("marketplace_item_group_variations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    fetch_run_id: Mapped[int | None] = mapped_column(
+        ForeignKey("marketplace_listing_fetch_runs.id", ondelete="CASCADE")
+    )
+    card_id: Mapped[int] = mapped_column(ForeignKey("cards.id", ondelete="CASCADE"), nullable=False)
+    match_reasons: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("CURRENT_TIMESTAMP"))
+
+    item_group_variation: Mapped[MarketplaceItemGroupVariation] = relationship(back_populates="matches")
+    fetch_run: Mapped[MarketplaceListingFetchRun | None] = relationship(back_populates="item_group_variation_matches")
+    card: Mapped[Card] = relationship()
 
 
 class MarketplacePriceSnapshot(Base):

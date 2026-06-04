@@ -24,6 +24,7 @@ if str(SCRIPT_DIR) not in sys.path:
 from card_tracker.db import session_scope
 from card_tracker.db.models import (
     Card,
+    MarketplaceItemGroupVariationMatch,
     MarketplaceItemGroupVariation,
     MarketplaceListingFetchRun,
     MarketplaceSource,
@@ -295,11 +296,16 @@ def marketplace_source_id(session) -> int:
     return source.id
 
 
-def upsert_item_group_rows(rows: list[dict[str, object]], db_path: Path) -> dict[str, int]:
+def upsert_item_group_rows(
+    rows: list[dict[str, object]],
+    db_path: Path,
+    fetch_run_id: int | None = None,
+) -> dict[str, int]:
     checked_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     created = 0
     updated = 0
     unchanged = 0
+    matches_created = 0
     with session_scope(db_path=db_path) as session:
         source_id = marketplace_source_id(session)
         for row in rows:
@@ -341,7 +347,15 @@ def upsert_item_group_rows(rows: list[dict[str, object]], db_path: Path) -> dict
                         last_seen_at=checked_at,
                     )
                 )
+                session.flush()
                 created += 1
+                item_group_variation = session.execute(
+                    select(MarketplaceItemGroupVariation)
+                    .where(MarketplaceItemGroupVariation.source_id == source_id)
+                    .where(MarketplaceItemGroupVariation.item_group_id == str(row["item_group_id"]))
+                    .where(MarketplaceItemGroupVariation.external_item_id == str(row["item_id"]))
+                ).scalar_one()
+                matches_created += upsert_item_group_match(session, item_group_variation.id, row, fetch_run_id)
                 continue
 
             changed = False
@@ -372,7 +386,35 @@ def upsert_item_group_rows(rows: list[dict[str, object]], db_path: Path) -> dict
                 updated += 1
             else:
                 unchanged += 1
-    return {"created": created, "updated": updated, "unchanged": unchanged}
+            matches_created += upsert_item_group_match(session, existing.id, row, fetch_run_id)
+    return {"created": created, "updated": updated, "unchanged": unchanged, "matches_created": matches_created}
+
+
+def upsert_item_group_match(session, variation_id: int, row: dict[str, object], fetch_run_id: int | None) -> int:
+    card_id_text = str(row.get("card_id") or "").strip()
+    if not card_id_text:
+        return 0
+
+    existing = session.execute(
+        select(MarketplaceItemGroupVariationMatch)
+        .where(MarketplaceItemGroupVariationMatch.item_group_variation_id == variation_id)
+        .where(MarketplaceItemGroupVariationMatch.fetch_run_id == fetch_run_id)
+        .where(MarketplaceItemGroupVariationMatch.card_id == int(card_id_text))
+    ).scalar_one_or_none()
+    if existing is not None:
+        if existing.match_reasons != (str(row.get("match_reasons") or "") or None):
+            existing.match_reasons = str(row.get("match_reasons") or "") or None
+        return 0
+
+    session.add(
+        MarketplaceItemGroupVariationMatch(
+            item_group_variation_id=variation_id,
+            fetch_run_id=fetch_run_id,
+            card_id=int(card_id_text),
+            match_reasons=str(row.get("match_reasons") or "") or None,
+        )
+    )
+    return 1
 
 
 def normalized_compact(text: str) -> str:
@@ -591,12 +633,12 @@ def main() -> None:
                 "Add --set-code and --set-name so the script can match rows before updating snapshots."
             )
 
-        ingest_result = {"created": 0, "updated": 0, "unchanged": 0}
+        ingest_result = {"created": 0, "updated": 0, "unchanged": 0, "matches_created": 0}
         snapshots_updated = 0
+        fetch_run_id = latest_fetch_run_id(args.run_dir, args.db_path)
         if args.ingest:
-            ingest_result = upsert_item_group_rows(matched_rows, args.db_path)
+            ingest_result = upsert_item_group_rows(matched_rows, args.db_path, fetch_run_id=fetch_run_id)
         if args.update_snapshots:
-            fetch_run_id = latest_fetch_run_id(args.run_dir, args.db_path)
             snapshots_updated = update_variation_snapshots(fetch_run_id, matched_rows, args.db_path)
 
         print(f"Read {len(matched_rows)} matched item-group rows from {args.matches_tsv}")
@@ -605,7 +647,8 @@ def main() -> None:
                 "Ingested item-group variations: "
                 f"{ingest_result['created']} created, "
                 f"{ingest_result['updated']} updated, "
-                f"{ingest_result['unchanged']} unchanged"
+                f"{ingest_result['unchanged']} unchanged, "
+                f"{ingest_result['matches_created']} matches created"
             )
         if args.update_snapshots:
             print(f"Updated variation price snapshots for {snapshots_updated} cards.")
@@ -656,9 +699,17 @@ def main() -> None:
             fetch_run_id = latest_fetch_run_id(args.run_dir, args.db_path)
             snapshots_updated = update_variation_snapshots(fetch_run_id, matched_rows, args.db_path)
 
-    ingest_result = {"created": 0, "updated": 0, "unchanged": 0}
+    ingest_result = {"created": 0, "updated": 0, "unchanged": 0, "matches_created": 0}
     if args.ingest:
-        ingest_result = upsert_item_group_rows(rows, args.db_path)
+        ingest_fetch_run_id = latest_fetch_run_id(args.run_dir, args.db_path)
+        ingest_result = upsert_item_group_rows(rows, args.db_path, fetch_run_id=ingest_fetch_run_id)
+        if matched_rows:
+            matched_ingest_result = upsert_item_group_rows(
+                matched_rows,
+                args.db_path,
+                fetch_run_id=ingest_fetch_run_id,
+            )
+            ingest_result["matches_created"] += matched_ingest_result["matches_created"]
 
     rate_limit_payload, rate_limit_error = fetch_rate_limits(access_token)
     rate_limit_lines = format_rate_limit_lines(rate_limit_payload, rate_limit_error)
@@ -673,7 +724,8 @@ def main() -> None:
             "Ingested item-group variations: "
             f"{ingest_result['created']} created, "
             f"{ingest_result['updated']} updated, "
-            f"{ingest_result['unchanged']} unchanged"
+            f"{ingest_result['unchanged']} unchanged, "
+            f"{ingest_result['matches_created']} matches created"
         )
     if args.update_snapshots:
         print(f"Updated variation price snapshots for {snapshots_updated} cards.")
