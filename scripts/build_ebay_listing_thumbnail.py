@@ -1,6 +1,5 @@
 from pathlib import Path
 import argparse
-import math
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 
@@ -41,9 +40,11 @@ def gradient_background(size: int) -> Image.Image:
     for y in range(size):
         for x in range(size):
             t = (x + y) / (2 * size)
-            r = int(29 + 205 * t)
-            g = int(34 + 88 * (1 - abs(t - 0.55)))
-            b = int(56 + 185 * (1 - t))
+            purple = (202, 172, 255)
+            mint = (172, 245, 218)
+            r = int(purple[0] + (mint[0] - purple[0]) * t)
+            g = int(purple[1] + (mint[1] - purple[1]) * t)
+            b = int(purple[2] + (mint[2] - purple[2]) * t)
             pixels[x, y] = (r, g, b)
 
     overlay = Image.new("RGBA", (size, size), (0, 0, 0, 0))
@@ -57,10 +58,10 @@ def gradient_background(size: int) -> Image.Image:
     return Image.alpha_composite(image.convert("RGBA"), overlay)
 
 
-def crop_card(path: Path) -> Image.Image:
+def crop_card(path: Path, bottom_trim: int = 0) -> Image.Image:
     image = ImageOps.exif_transpose(Image.open(path)).convert("RGBA")
     # Crop the physical card from the consistent photo station framing.
-    card = image.crop((1030, 1450, 2050, 3090))
+    card = image.crop((1030, 1525, 2050, 3090 - bottom_trim))
     return card
 
 
@@ -129,15 +130,23 @@ def main() -> None:
         "0805-07-Houndoom.jpg",
         "2205-07-Floragato.jpg",
     ]
-    cards = [crop_card(photo_dir / filename) for filename in selected_cards]
+    bottom_trims = {
+        "0101-07-Captain Pikachu.jpg": 30,
+        "0805-07-Houndoom.jpg": 30,
+        "2205-07-Floragato.jpg": 30,
+    }
+    cards = [
+        crop_card(photo_dir / filename, bottom_trim=bottom_trims.get(filename, 0))
+        for filename in selected_cards
+    ]
 
     size = 1600
     canvas = gradient_background(size)
 
-    paste_rotated_card(canvas, cards[0], (330, 570), 820, -17)
-    paste_rotated_card(canvas, cards[1], (1260, 590), 820, 15)
-    paste_rotated_card(canvas, cards[2], (590, 520), 780, -7)
-    paste_rotated_card(canvas, cards[3], (1010, 515), 780, 7)
+    paste_rotated_card(canvas, cards[0], (330, 570), 820, 17)
+    paste_rotated_card(canvas, cards[1], (1260, 590), 820, -15)
+    paste_rotated_card(canvas, cards[2], (590, 520), 780, 7)
+    paste_rotated_card(canvas, cards[3], (1010, 515), 780, -7)
     paste_rotated_card(canvas, cards[4], (800, 610), 900, 0)
 
     draw = ImageDraw.Draw(canvas)
@@ -155,8 +164,8 @@ def main() -> None:
     # Bottom readable listing text.
     draw.rounded_rectangle((0, 1165, 1600, 1600), radius=0, fill=(0, 0, 0, 120))
     text_with_stroke(draw, (800, 1250), "GEM PACK VOL. 5", impact, "white", stroke_width=10)
-    text_with_stroke(draw, (470, 1425), "CHOOSE YOUR CARD", impact_small, "#ff5a19", stroke_width=7)
-    text_with_stroke(draw, (1160, 1425), "FAST US SHIPPING", impact_small, "#1ee6e6", stroke_width=7)
+    text_with_stroke(draw, (470, 1425), "CHOOSE YOUR CARD", impact_small, "#9b5de5", stroke_width=7)
+    text_with_stroke(draw, (1160, 1425), "FAST US SHIPPING", impact_small, "#35d79f", stroke_width=7)
 
     draw.rounded_rectangle((635, 1058, 965, 1130), radius=24, fill=(255, 224, 99, 235), outline=(12, 20, 32, 255), width=4)
     draw.text((800, 1094), "S-CHINESE", font=load_font("arialbd.ttf", 44), fill=(12, 20, 32), anchor="mm")
