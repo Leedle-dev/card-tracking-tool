@@ -529,11 +529,59 @@ def update_variation_snapshots(
     return len(rows_by_card)
 
 
+def rows_have_card_ids(rows: list[dict[str, object]]) -> bool:
+    return bool(rows) and all(str(row.get("card_id") or "").strip() for row in rows)
+
+
+def validate_rows_belong_to_set(
+    rows: list[dict[str, object]],
+    set_code: str,
+    set_name: str,
+    db_path: Path,
+) -> None:
+    row_card_ids = {int(str(row["card_id"])) for row in rows if str(row.get("card_id") or "").strip()}
+    if not row_card_ids:
+        return
+
+    with session_scope(db_path=db_path) as session:
+        valid_card_ids = set(
+            session.execute(
+                select(Card.id)
+                .join(SetCatalog, Card.set_catalog_id == SetCatalog.id)
+                .where(func.lower(SetCatalog.set_code) == set_code.lower())
+                .where(func.lower(SetCatalog.set_name) == set_name.lower())
+            ).scalars()
+        )
+
+    invalid_card_ids = sorted(row_card_ids - valid_card_ids)
+    if invalid_card_ids:
+        sample = ", ".join(str(card_id) for card_id in invalid_card_ids[:10])
+        raise SystemExit(
+            f"{len(invalid_card_ids)} matched TSV card_id values do not belong to "
+            f"{set_code} / {set_name}. First invalid ids: {sample}"
+        )
+
+
 def main() -> None:
     args = parse_args()
 
     if args.matches_tsv:
         matched_rows = read_tsv(args.matches_tsv)
+        if rows_have_card_ids(matched_rows):
+            if args.set_code and args.set_name:
+                validate_rows_belong_to_set(matched_rows, args.set_code, args.set_name, args.db_path)
+        elif args.set_code and args.set_name:
+            matched_rows = match_rows_to_set(matched_rows, args.set_code, args.set_name, args.db_path)
+            print(
+                f"Matched {len(matched_rows)} rows to {args.set_code} / {args.set_name} "
+                "from the provided TSV."
+            )
+        elif args.update_snapshots:
+            raise SystemExit(
+                "The provided TSV does not contain card_id values. "
+                "Add --set-code and --set-name so the script can match rows before updating snapshots."
+            )
+
         ingest_result = {"created": 0, "updated": 0, "unchanged": 0}
         snapshots_updated = 0
         if args.ingest:
