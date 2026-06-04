@@ -61,7 +61,7 @@ def gradient_background(size: int) -> Image.Image:
 def crop_card(path: Path, bottom_trim: int = 0) -> Image.Image:
     image = ImageOps.exif_transpose(Image.open(path)).convert("RGBA")
     # Crop the physical card from the consistent photo station framing.
-    card = image.crop((1030, 1525, 2050, 3090 - bottom_trim))
+    card = image.crop((1030, 1600, 2050, 3090 - bottom_trim))
     return card
 
 
@@ -131,9 +131,9 @@ def main() -> None:
         "2205-07-Floragato.jpg",
     ]
     bottom_trims = {
-        "0101-07-Captain Pikachu.jpg": 30,
-        "0805-07-Houndoom.jpg": 30,
-        "2205-07-Floragato.jpg": 30,
+        "0101-07-Captain Pikachu.jpg": 60,
+        "0805-07-Houndoom.jpg": 60,
+        "2205-07-Floragato.jpg": 60,
     }
     cards = [
         crop_card(photo_dir / filename, bottom_trim=bottom_trims.get(filename, 0))
