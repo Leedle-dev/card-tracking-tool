@@ -54,6 +54,10 @@ class Card(Base):
     marketplace_listing_queries: Mapped[list[MarketplaceListingQuery]] = relationship(back_populates="card", cascade="all, delete-orphan")
     marketplace_listing_matches: Mapped[list[MarketplaceListingMatch]] = relationship(back_populates="card", cascade="all, delete-orphan")
     marketplace_price_snapshots: Mapped[list[MarketplacePriceSnapshot]] = relationship(back_populates="card", cascade="all, delete-orphan")
+    marketplace_variation_price_snapshots: Mapped[list[MarketplaceVariationPriceSnapshot]] = relationship(
+        back_populates="card",
+        cascade="all, delete-orphan",
+    )
     equivalent_links: Mapped[list[CardEquivalent]] = relationship(
         back_populates="card",
         cascade="all, delete-orphan",
@@ -477,6 +481,10 @@ class MarketplaceListingFetchRun(Base):
     queries: Mapped[list[MarketplaceListingQuery]] = relationship(back_populates="fetch_run", cascade="all, delete-orphan")
     listings: Mapped[list[MarketplaceListing]] = relationship(back_populates="fetch_run", cascade="all, delete-orphan")
     price_snapshots: Mapped[list[MarketplacePriceSnapshot]] = relationship(back_populates="fetch_run", cascade="all, delete-orphan")
+    variation_price_snapshots: Mapped[list[MarketplaceVariationPriceSnapshot]] = relationship(
+        back_populates="fetch_run",
+        cascade="all, delete-orphan",
+    )
 
 
 class MarketplaceListingQuery(Base):
@@ -619,6 +627,50 @@ class MarketplacePriceSnapshot(Base):
 
     fetch_run: Mapped[MarketplaceListingFetchRun] = relationship(back_populates="price_snapshots")
     card: Mapped[Card] = relationship(back_populates="marketplace_price_snapshots")
+
+
+class MarketplaceVariationPriceSnapshot(Base):
+    __tablename__ = "marketplace_variation_price_snapshots"
+    __table_args__ = (
+        CheckConstraint("variation_listing_count >= 0", name="ck_marketplace_variation_snapshots_listing_count_nonnegative"),
+        CheckConstraint("min_price_cents IS NULL OR min_price_cents >= 0", name="ck_marketplace_variation_snapshots_min_nonnegative"),
+        CheckConstraint("max_price_cents IS NULL OR max_price_cents >= 0", name="ck_marketplace_variation_snapshots_max_nonnegative"),
+        CheckConstraint("mean_price_cents IS NULL OR mean_price_cents >= 0", name="ck_marketplace_variation_snapshots_mean_nonnegative"),
+        CheckConstraint("median_price_cents IS NULL OR median_price_cents >= 0", name="ck_marketplace_variation_snapshots_median_nonnegative"),
+        CheckConstraint("stddev_price_cents IS NULL OR stddev_price_cents >= 0", name="ck_marketplace_variation_snapshots_stddev_nonnegative"),
+        CheckConstraint("p10_price_cents IS NULL OR p10_price_cents >= 0", name="ck_marketplace_variation_snapshots_p10_nonnegative"),
+        CheckConstraint("p25_price_cents IS NULL OR p25_price_cents >= 0", name="ck_marketplace_variation_snapshots_p25_nonnegative"),
+        CheckConstraint("p75_price_cents IS NULL OR p75_price_cents >= 0", name="ck_marketplace_variation_snapshots_p75_nonnegative"),
+        CheckConstraint("p90_price_cents IS NULL OR p90_price_cents >= 0", name="ck_marketplace_variation_snapshots_p90_nonnegative"),
+        CheckConstraint("iqr_price_cents IS NULL OR iqr_price_cents >= 0", name="ck_marketplace_variation_snapshots_iqr_nonnegative"),
+        CheckConstraint("trimmed_mean_price_cents IS NULL OR trimmed_mean_price_cents >= 0", name="ck_marketplace_variation_snapshots_trimmed_mean_nonnegative"),
+        CheckConstraint("domestic_listing_count >= 0", name="ck_marketplace_variation_snapshots_domestic_count_nonnegative"),
+        CheckConstraint("international_listing_count >= 0", name="ck_marketplace_variation_snapshots_international_count_nonnegative"),
+        UniqueConstraint("fetch_run_id", "card_id"),
+        Index("idx_marketplace_variation_snapshots_card", "card_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    fetch_run_id: Mapped[int] = mapped_column(ForeignKey("marketplace_listing_fetch_runs.id", ondelete="CASCADE"), nullable=False)
+    card_id: Mapped[int] = mapped_column(ForeignKey("cards.id", ondelete="CASCADE"), nullable=False)
+    variation_listing_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    min_price_cents: Mapped[int | None] = mapped_column(Integer)
+    max_price_cents: Mapped[int | None] = mapped_column(Integer)
+    mean_price_cents: Mapped[float | None] = mapped_column(Float)
+    median_price_cents: Mapped[float | None] = mapped_column(Float)
+    stddev_price_cents: Mapped[float | None] = mapped_column(Float)
+    p10_price_cents: Mapped[float | None] = mapped_column(Float)
+    p25_price_cents: Mapped[float | None] = mapped_column(Float)
+    p75_price_cents: Mapped[float | None] = mapped_column(Float)
+    p90_price_cents: Mapped[float | None] = mapped_column(Float)
+    iqr_price_cents: Mapped[float | None] = mapped_column(Float)
+    trimmed_mean_price_cents: Mapped[float | None] = mapped_column(Float)
+    domestic_listing_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    international_listing_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("CURRENT_TIMESTAMP"))
+
+    fetch_run: Mapped[MarketplaceListingFetchRun] = relationship(back_populates="variation_price_snapshots")
+    card: Mapped[Card] = relationship(back_populates="marketplace_variation_price_snapshots")
 
 
 class GradeRateReferenceGroup(Base):

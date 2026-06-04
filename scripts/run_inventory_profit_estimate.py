@@ -73,6 +73,7 @@ def fetch_rows(set_code: str) -> list[sqlite3.Row]:
                 SUM(quantity) AS quantity
             FROM card_inventory
             WHERE sale_status != 'reference'
+                AND LOWER(COALESCE(condition, '')) != 'graded'
             GROUP BY card_id
         ),
         latest_snapshots AS (

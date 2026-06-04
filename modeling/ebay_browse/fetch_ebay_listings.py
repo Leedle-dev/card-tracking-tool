@@ -306,7 +306,8 @@ def main() -> None:
             f"{result['listings_updated']} updated, "
             f"{result['listings_unchanged']} unchanged, "
             f"{result['matches']} matches, "
-            f"{result['price_snapshots']} price snapshots"
+            f"{result['price_snapshots']} price snapshots, "
+            f"{result['variation_price_snapshots']} variation price snapshots"
         )
 
 

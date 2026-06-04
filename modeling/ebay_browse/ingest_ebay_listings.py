@@ -25,6 +25,7 @@ from card_tracker.db.models import (
     MarketplaceListingMatch,
     MarketplaceListingQuery,
     MarketplacePriceSnapshot,
+    MarketplaceVariationPriceSnapshot,
     MarketplaceSource,
     Card,
     SetCatalog,
@@ -343,6 +344,37 @@ def snapshot_for_card(fetch_run_id: int, card_id: int, listings: list[Marketplac
     )
 
 
+def variation_snapshot_for_card(
+    fetch_run_id: int,
+    card_id: int,
+    listings: list[MarketplaceListing],
+) -> MarketplaceVariationPriceSnapshot:
+    prices = [listing.price_cents for listing in listings if listing.price_cents is not None]
+    domestic_count = sum(1 for listing in listings if listing.item_location_country == "US")
+    international_count = sum(1 for listing in listings if listing.item_location_country and listing.item_location_country != "US")
+    p25 = percentile(prices, 0.25)
+    p75 = percentile(prices, 0.75)
+
+    return MarketplaceVariationPriceSnapshot(
+        fetch_run_id=fetch_run_id,
+        card_id=card_id,
+        variation_listing_count=len(listings),
+        min_price_cents=min(prices) if prices else None,
+        max_price_cents=max(prices) if prices else None,
+        mean_price_cents=float(statistics.mean(prices)) if prices else None,
+        median_price_cents=float(statistics.median(prices)) if prices else None,
+        stddev_price_cents=float(statistics.stdev(prices)) if len(prices) > 1 else 0.0 if prices else None,
+        p10_price_cents=percentile(prices, 0.10),
+        p25_price_cents=p25,
+        p75_price_cents=p75,
+        p90_price_cents=percentile(prices, 0.90),
+        iqr_price_cents=(p75 - p25) if p25 is not None and p75 is not None else None,
+        trimmed_mean_price_cents=trimmed_mean(prices),
+        domestic_listing_count=domestic_count,
+        international_listing_count=international_count,
+    )
+
+
 def ingest_run(
     run_dir: Path,
     db_path: Path,
@@ -406,6 +438,7 @@ def ingest_run(
 
         listing_by_item_id: dict[str, MarketplaceListing] = {}
         accepted_listings_by_card: dict[int, list[MarketplaceListing]] = {}
+        variation_listings_by_card: dict[int, list[MarketplaceListing]] = {}
         match_count = 0
         listings_created = 0
         listings_updated = 0
@@ -453,6 +486,8 @@ def ingest_run(
 
                 if status == "accepted":
                     accepted_listings_by_card.setdefault(query_row.card_id, []).append(listing)
+                elif status == "variation":
+                    variation_listings_by_card.setdefault(query_row.card_id, []).append(listing)
 
         for query_row in query_by_label.values():
             snapshot = snapshot_for_card(
@@ -461,6 +496,13 @@ def ingest_run(
                 accepted_listings_by_card.get(query_row.card_id, []),
             )
             session.add(snapshot)
+
+            variation_snapshot = variation_snapshot_for_card(
+                fetch_run.id,
+                query_row.card_id,
+                variation_listings_by_card.get(query_row.card_id, []),
+            )
+            session.add(variation_snapshot)
 
         return {
             "fetch_run_id": fetch_run.id,
@@ -471,6 +513,7 @@ def ingest_run(
             "listings_unchanged": listings_unchanged,
             "matches": match_count,
             "price_snapshots": len(query_by_label),
+            "variation_price_snapshots": len(query_by_label),
         }
 
 
@@ -492,6 +535,7 @@ def main() -> None:
         f"listings_unchanged={result['listings_unchanged']} "
         f"matches={result['matches']} "
         f"price_snapshots={result['price_snapshots']}"
+        f" variation_price_snapshots={result['variation_price_snapshots']}"
     )
 
 

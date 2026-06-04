@@ -400,6 +400,30 @@ CREATE TABLE IF NOT EXISTS marketplace_price_snapshots (
     UNIQUE (fetch_run_id, card_id)
 );
 
+CREATE TABLE IF NOT EXISTS marketplace_variation_price_snapshots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    fetch_run_id INTEGER NOT NULL,
+    card_id INTEGER NOT NULL,
+    variation_listing_count INTEGER NOT NULL DEFAULT 0 CHECK (variation_listing_count >= 0),
+    min_price_cents INTEGER CHECK (min_price_cents IS NULL OR min_price_cents >= 0),
+    max_price_cents INTEGER CHECK (max_price_cents IS NULL OR max_price_cents >= 0),
+    mean_price_cents REAL CHECK (mean_price_cents IS NULL OR mean_price_cents >= 0),
+    median_price_cents REAL CHECK (median_price_cents IS NULL OR median_price_cents >= 0),
+    stddev_price_cents REAL CHECK (stddev_price_cents IS NULL OR stddev_price_cents >= 0),
+    p10_price_cents REAL CHECK (p10_price_cents IS NULL OR p10_price_cents >= 0),
+    p25_price_cents REAL CHECK (p25_price_cents IS NULL OR p25_price_cents >= 0),
+    p75_price_cents REAL CHECK (p75_price_cents IS NULL OR p75_price_cents >= 0),
+    p90_price_cents REAL CHECK (p90_price_cents IS NULL OR p90_price_cents >= 0),
+    iqr_price_cents REAL CHECK (iqr_price_cents IS NULL OR iqr_price_cents >= 0),
+    trimmed_mean_price_cents REAL CHECK (trimmed_mean_price_cents IS NULL OR trimmed_mean_price_cents >= 0),
+    domestic_listing_count INTEGER NOT NULL DEFAULT 0 CHECK (domestic_listing_count >= 0),
+    international_listing_count INTEGER NOT NULL DEFAULT 0 CHECK (international_listing_count >= 0),
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (fetch_run_id) REFERENCES marketplace_listing_fetch_runs(id) ON DELETE CASCADE,
+    FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE,
+    UNIQUE (fetch_run_id, card_id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_cards_search ON cards(name, card_number);
 DROP INDEX IF EXISTS idx_cards_sale_status;
 CREATE INDEX IF NOT EXISTS idx_cards_set_catalog_id ON cards(set_catalog_id);
@@ -454,6 +478,8 @@ CREATE INDEX IF NOT EXISTS idx_marketplace_listing_matches_card_status
 ON marketplace_listing_matches(card_id, match_status);
 CREATE INDEX IF NOT EXISTS idx_marketplace_price_snapshots_card
 ON marketplace_price_snapshots(card_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_marketplace_variation_snapshots_card
+ON marketplace_variation_price_snapshots(card_id, created_at);
 
 CREATE TRIGGER IF NOT EXISTS trg_cards_updated_at
 AFTER UPDATE ON cards
