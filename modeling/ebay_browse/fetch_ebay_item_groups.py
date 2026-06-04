@@ -465,6 +465,7 @@ def match_rows_to_set(
 
 
 def latest_fetch_run_id(run_dir: Path, db_path: Path) -> int:
+    target_path = run_dir.resolve()
     with session_scope(db_path=db_path) as session:
         fetch_run = session.execute(
             select(MarketplaceListingFetchRun)
@@ -472,9 +473,17 @@ def latest_fetch_run_id(run_dir: Path, db_path: Path) -> int:
             .order_by(MarketplaceListingFetchRun.id.desc())
             .limit(1)
         ).scalar_one_or_none()
-        if fetch_run is None:
-            raise SystemExit(f"{run_dir} is not recorded in marketplace_listing_fetch_runs.")
-        return fetch_run.id
+        if fetch_run is not None:
+            return fetch_run.id
+
+        fetch_runs = session.execute(
+            select(MarketplaceListingFetchRun).where(MarketplaceListingFetchRun.output_dir.is_not(None))
+        ).scalars().all()
+        for candidate in fetch_runs:
+            if Path(str(candidate.output_dir)).resolve() == target_path:
+                return candidate.id
+
+    raise SystemExit(f"{run_dir} is not recorded in marketplace_listing_fetch_runs.")
 
 
 def snapshot_tuple(fetch_run_id: int, card_id: int, rows: list[dict[str, object]]) -> MarketplaceVariationPriceSnapshot:
