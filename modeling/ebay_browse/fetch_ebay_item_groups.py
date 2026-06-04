@@ -401,13 +401,28 @@ def match_rows_to_set(
     db_path: Path,
 ) -> list[dict[str, object]]:
     with session_scope(db_path=db_path) as session:
-        cards = session.execute(
-            select(Card)
+        card_rows = session.execute(
+            select(
+                Card.id,
+                Card.card_number,
+                Card.pokemon_name,
+                Card.name,
+            )
             .join(SetCatalog, Card.set_catalog_id == SetCatalog.id)
             .where(func.lower(SetCatalog.set_code) == set_code.lower())
             .where(func.lower(SetCatalog.set_name) == set_name.lower())
             .order_by(Card.source_sequence, Card.card_number, Card.id)
-        ).scalars().all()
+        ).all()
+
+    cards = [
+        {
+            "id": row.id,
+            "card_number": row.card_number,
+            "pokemon_name": row.pokemon_name,
+            "name": row.name,
+        }
+        for row in card_rows
+    ]
 
     if not cards:
         raise SystemExit(f"No cards found for set_code={set_code!r} and set_name={set_name!r}.")
@@ -420,10 +435,12 @@ def match_rows_to_set(
         if not set_identity_matches(text, set_code, set_name):
             continue
         for card in cards:
-            if not card.card_number or not title_has_card_number(text, card.card_number):
+            card_number = str(card["card_number"] or "")
+            if not card_number or not title_has_card_number(text, card_number):
                 continue
-            pokemon_name = card.pokemon_name or card.name
-            reasons = [f"card_number:{card.card_number}"]
+            pokemon_name = str(card["pokemon_name"] or card["name"])
+            card_name = str(card["name"])
+            reasons = [f"card_number:{card_number}"]
             if set_identity_matches(text, set_code, set_name):
                 reasons.append(f"set_identity:{set_code}_or_{set_name}")
             if pokemon_name and title_has_phrase(text, pokemon_name):
@@ -431,10 +448,10 @@ def match_rows_to_set(
             matched_rows.append(
                 {
                     **row,
-                    "card_id": card.id,
-                    "card_number": card.card_number,
+                    "card_id": card["id"],
+                    "card_number": card_number,
                     "pokemon_name": pokemon_name,
-                    "card_name": card.name,
+                    "card_name": card_name,
                     "match_reasons": ";".join(reasons),
                 }
             )
