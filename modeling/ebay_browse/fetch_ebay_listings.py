@@ -302,6 +302,9 @@ def main() -> None:
             "Ingested run "
             f"{result['fetch_run_id']}: "
             f"{result['listings']} listings, "
+            f"{result['listings_created']} created, "
+            f"{result['listings_updated']} updated, "
+            f"{result['listings_unchanged']} unchanged, "
             f"{result['matches']} matches, "
             f"{result['price_snapshots']} price snapshots"
         )

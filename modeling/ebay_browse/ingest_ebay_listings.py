@@ -33,6 +33,30 @@ from fetch_ebay_listings import build_query
 from fetch_houndoom_browse import search_query_text
 
 
+LISTING_UPDATE_FIELDS = [
+    "fetch_run_id",
+    "legacy_item_id",
+    "item_web_url",
+    "title",
+    "condition",
+    "buying_options",
+    "price_cents",
+    "shipping_cents",
+    "total_price_cents",
+    "currency",
+    "is_variation_listing",
+    "item_group_href",
+    "item_group_type",
+    "item_location_country",
+    "seller_feedback_score",
+    "seller_feedback_percentage",
+    "item_creation_date",
+    "item_end_date",
+    "image_url",
+    "raw_json_path",
+]
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Ingest eBay listing TSV output into SQLite.")
     # Example:
@@ -249,6 +273,26 @@ def listing_from_row(row: dict[str, str], fetch_run_id: int, source_id: int, raw
     )
 
 
+def find_existing_listing(session, source_id: int, external_item_id: str) -> MarketplaceListing | None:
+    return session.execute(
+        select(MarketplaceListing)
+        .where(MarketplaceListing.source_id == source_id)
+        .where(MarketplaceListing.external_item_id == external_item_id)
+        .order_by(MarketplaceListing.id.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+
+
+def apply_listing_update(existing: MarketplaceListing, incoming: MarketplaceListing) -> bool:
+    changed = False
+    for field in LISTING_UPDATE_FIELDS:
+        incoming_value = getattr(incoming, field)
+        if getattr(existing, field) != incoming_value:
+            setattr(existing, field, incoming_value)
+            changed = True
+    return changed
+
+
 def percentile(values: list[int], percent: float) -> float | None:
     if not values:
         return None
@@ -363,6 +407,9 @@ def ingest_run(
         listing_by_item_id: dict[str, MarketplaceListing] = {}
         accepted_listings_by_card: dict[int, list[MarketplaceListing]] = {}
         match_count = 0
+        listings_created = 0
+        listings_updated = 0
+        listings_unchanged = 0
 
         for status, rows in rows_by_status:
             for row in rows:
@@ -375,14 +422,22 @@ def ingest_run(
                 item_id = row["item_id"]
                 listing = listing_by_item_id.get(item_id)
                 if listing is None:
-                    listing = listing_from_row(
+                    incoming_listing = listing_from_row(
                         row,
                         fetch_run.id,
                         source_id,
                         raw_json_path=str(query_info.get("raw_json_path") or ""),
                     )
-                    session.add(listing)
-                    session.flush()
+                    listing = find_existing_listing(session, source_id, item_id)
+                    if listing is None:
+                        listing = incoming_listing
+                        session.add(listing)
+                        session.flush()
+                        listings_created += 1
+                    elif apply_listing_update(listing, incoming_listing):
+                        listings_updated += 1
+                    else:
+                        listings_unchanged += 1
                     listing_by_item_id[item_id] = listing
 
                 match = MarketplaceListingMatch(
@@ -411,6 +466,9 @@ def ingest_run(
             "fetch_run_id": fetch_run.id,
             "queries": len(query_by_label),
             "listings": len(listing_by_item_id),
+            "listings_created": listings_created,
+            "listings_updated": listings_updated,
+            "listings_unchanged": listings_unchanged,
             "matches": match_count,
             "price_snapshots": len(query_by_label),
         }
@@ -429,6 +487,9 @@ def main() -> None:
         f"Ingested fetch_run_id={result['fetch_run_id']} "
         f"queries={result['queries']} "
         f"listings={result['listings']} "
+        f"listings_created={result['listings_created']} "
+        f"listings_updated={result['listings_updated']} "
+        f"listings_unchanged={result['listings_unchanged']} "
         f"matches={result['matches']} "
         f"price_snapshots={result['price_snapshots']}"
     )
