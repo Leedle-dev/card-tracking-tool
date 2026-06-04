@@ -189,6 +189,7 @@ class MarketplaceSource(Base):
     graded_price_records: Mapped[list[GradedPriceRecord]] = relationship(back_populates="source")
     marketplace_listing_fetch_runs: Mapped[list[MarketplaceListingFetchRun]] = relationship(back_populates="marketplace_source")
     marketplace_listings: Mapped[list[MarketplaceListing]] = relationship(back_populates="source")
+    marketplace_item_group_variations: Mapped[list[MarketplaceItemGroupVariation]] = relationship(back_populates="source")
 
 
 class GradingCompany(Base):
@@ -583,6 +584,49 @@ class MarketplaceListingMatch(Base):
     listing: Mapped[MarketplaceListing] = relationship(back_populates="matches")
     query: Mapped[MarketplaceListingQuery] = relationship(back_populates="matches")
     card: Mapped[Card] = relationship(back_populates="marketplace_listing_matches")
+
+
+class MarketplaceItemGroupVariation(Base):
+    __tablename__ = "marketplace_item_group_variations"
+    __table_args__ = (
+        CheckConstraint("price_cents IS NULL OR price_cents >= 0", name="ck_marketplace_item_group_variations_price_nonnegative"),
+        CheckConstraint("shipping_cents IS NULL OR shipping_cents >= 0", name="ck_marketplace_item_group_variations_shipping_nonnegative"),
+        CheckConstraint("total_price_cents IS NULL OR total_price_cents >= 0", name="ck_marketplace_item_group_variations_total_nonnegative"),
+        CheckConstraint(
+            "estimated_available_quantity IS NULL OR estimated_available_quantity >= 0",
+            name="ck_marketplace_item_group_variations_quantity_nonnegative",
+        ),
+        UniqueConstraint("source_id", "item_group_id", "external_item_id"),
+        Index("idx_marketplace_item_group_variations_group", "source_id", "item_group_id"),
+        Index("idx_marketplace_item_group_variations_item", "source_id", "external_item_id"),
+        Index("idx_marketplace_item_group_variations_price", "price_cents", "currency"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source_id: Mapped[int] = mapped_column(ForeignKey("marketplace_sources.id"), nullable=False)
+    item_group_id: Mapped[str] = mapped_column(Text, nullable=False)
+    external_item_id: Mapped[str] = mapped_column(Text, nullable=False)
+    legacy_item_id: Mapped[str | None] = mapped_column(Text)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    condition: Mapped[str | None] = mapped_column(Text)
+    buying_options: Mapped[str | None] = mapped_column(Text)
+    variation_attributes_json: Mapped[str | None] = mapped_column(Text)
+    variation_attributes_text: Mapped[str | None] = mapped_column(Text)
+    price_cents: Mapped[int | None] = mapped_column(Integer)
+    shipping_cents: Mapped[int | None] = mapped_column(Integer)
+    total_price_cents: Mapped[int | None] = mapped_column(Integer)
+    currency: Mapped[str] = mapped_column(Text, nullable=False, default="USD")
+    estimated_availability_status: Mapped[str | None] = mapped_column(Text)
+    estimated_available_quantity: Mapped[int | None] = mapped_column(Integer)
+    item_location_country: Mapped[str | None] = mapped_column(Text)
+    item_web_url: Mapped[str | None] = mapped_column(Text)
+    image_url: Mapped[str | None] = mapped_column(Text)
+    raw_json_path: Mapped[str | None] = mapped_column(Text)
+    first_seen_at: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("CURRENT_TIMESTAMP"))
+    last_seen_at: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("CURRENT_TIMESTAMP"))
+    created_at: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("CURRENT_TIMESTAMP"))
+
+    source: Mapped[MarketplaceSource] = relationship(back_populates="marketplace_item_group_variations")
 
 
 class MarketplacePriceSnapshot(Base):

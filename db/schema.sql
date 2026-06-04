@@ -424,6 +424,37 @@ CREATE TABLE IF NOT EXISTS marketplace_variation_price_snapshots (
     UNIQUE (fetch_run_id, card_id)
 );
 
+CREATE TABLE IF NOT EXISTS marketplace_item_group_variations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_id INTEGER NOT NULL,
+    item_group_id TEXT NOT NULL,
+    external_item_id TEXT NOT NULL,
+    legacy_item_id TEXT,
+    title TEXT NOT NULL,
+    condition TEXT,
+    buying_options TEXT,
+    variation_attributes_json TEXT,
+    variation_attributes_text TEXT,
+    price_cents INTEGER CHECK (price_cents IS NULL OR price_cents >= 0),
+    shipping_cents INTEGER CHECK (shipping_cents IS NULL OR shipping_cents >= 0),
+    total_price_cents INTEGER CHECK (total_price_cents IS NULL OR total_price_cents >= 0),
+    currency TEXT NOT NULL DEFAULT 'USD',
+    estimated_availability_status TEXT,
+    estimated_available_quantity INTEGER CHECK (
+        estimated_available_quantity IS NULL
+        OR estimated_available_quantity >= 0
+    ),
+    item_location_country TEXT,
+    item_web_url TEXT,
+    image_url TEXT,
+    raw_json_path TEXT,
+    first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (source_id) REFERENCES marketplace_sources(id),
+    UNIQUE (source_id, item_group_id, external_item_id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_cards_search ON cards(name, card_number);
 DROP INDEX IF EXISTS idx_cards_sale_status;
 CREATE INDEX IF NOT EXISTS idx_cards_set_catalog_id ON cards(set_catalog_id);
@@ -480,6 +511,12 @@ CREATE INDEX IF NOT EXISTS idx_marketplace_price_snapshots_card
 ON marketplace_price_snapshots(card_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_marketplace_variation_snapshots_card
 ON marketplace_variation_price_snapshots(card_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_marketplace_item_group_variations_group
+ON marketplace_item_group_variations(source_id, item_group_id);
+CREATE INDEX IF NOT EXISTS idx_marketplace_item_group_variations_item
+ON marketplace_item_group_variations(source_id, external_item_id);
+CREATE INDEX IF NOT EXISTS idx_marketplace_item_group_variations_price
+ON marketplace_item_group_variations(price_cents, currency);
 
 CREATE TRIGGER IF NOT EXISTS trg_cards_updated_at
 AFTER UPDATE ON cards
