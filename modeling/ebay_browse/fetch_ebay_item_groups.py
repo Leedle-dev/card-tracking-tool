@@ -91,6 +91,11 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         help="Optional explicit *_ebay_listings_variations.tsv path. Defaults to the one in --run-dir.",
     )
+    parser.add_argument(
+        "--matches-tsv",
+        type=Path,
+        help="Optional existing *_item_group_matches.tsv to ingest/update snapshots without calling eBay.",
+    )
     parser.add_argument("--set-code", help="Optional set code for set-specific matching, such as CBB5C.")
     parser.add_argument("--set-name", help='Optional set name for set-specific matching, such as "Gem Pack Vol. 5".')
     parser.add_argument("--max-groups", type=int, help="Optional safety cap for testing, such as --max-groups 5.")
@@ -526,6 +531,31 @@ def update_variation_snapshots(
 
 def main() -> None:
     args = parse_args()
+
+    if args.matches_tsv:
+        matched_rows = read_tsv(args.matches_tsv)
+        ingest_result = {"created": 0, "updated": 0, "unchanged": 0}
+        snapshots_updated = 0
+        if args.ingest:
+            ingest_result = upsert_item_group_rows(matched_rows, args.db_path)
+        if args.update_snapshots:
+            fetch_run_id = latest_fetch_run_id(args.run_dir, args.db_path)
+            snapshots_updated = update_variation_snapshots(fetch_run_id, matched_rows, args.db_path)
+
+        print(f"Read {len(matched_rows)} matched item-group rows from {args.matches_tsv}")
+        if args.ingest:
+            print(
+                "Ingested item-group variations: "
+                f"{ingest_result['created']} created, "
+                f"{ingest_result['updated']} updated, "
+                f"{ingest_result['unchanged']} unchanged"
+            )
+        if args.update_snapshots:
+            print(f"Updated variation price snapshots for {snapshots_updated} cards.")
+        if not args.ingest and not args.update_snapshots:
+            print("No database writes requested. Add --ingest and/or --update-snapshots to write to SQLite.")
+        return
+
     variation_tsv = args.variation_tsv or find_one(args.run_dir, "*_ebay_listings_variations.tsv")
     item_groups = load_item_group_hrefs(variation_tsv)
     if args.max_groups is not None:
