@@ -422,6 +422,57 @@ def parse_float(text: str) -> float | None:
         return None
 
 
+def manual_calculated_shipping_value(price_text: str) -> str:
+    """Return an estimated shipping value for eBay calculated shipping.
+
+    Example:
+        $4.99 listing -> 1.00
+        $12.00 listing -> 2.00
+        $20.00 listing -> 5.00
+    """
+
+    price = parse_float(price_text)
+    if price is None:
+        return "5.00"
+    if price < 5:
+        return "1.00"
+    if price <= 15:
+        return "2.00"
+    return "5.00"
+
+
+def shipping_from_options(shipping_options: object, price: dict[str, object]) -> dict[str, str]:
+    if not isinstance(shipping_options, list) or not shipping_options:
+        return {}
+
+    saw_calculated = False
+    saw_free = False
+    for option in shipping_options:
+        if not isinstance(option, dict):
+            continue
+        shipping_cost = option.get("shippingCost")
+        if isinstance(shipping_cost, dict):
+            return {
+                "value": value(shipping_cost, "value"),
+                "currency": value(shipping_cost, "currency"),
+            }
+
+        cost_type = value(option, "shippingCostType").upper()
+        if cost_type == "CALCULATED":
+            saw_calculated = True
+        elif "FREE" in cost_type:
+            saw_free = True
+
+    if saw_free:
+        return {"value": "0.00", "currency": value(price, "currency") or "USD"}
+    if saw_calculated:
+        return {
+            "value": manual_calculated_shipping_value(value(price, "value")),
+            "currency": value(price, "currency") or "USD",
+        }
+    return {}
+
+
 def is_variation_listing(item_id: str) -> str:
     parts = item_id.split("|")
     return str(len(parts) == 3 and parts[2] != "0")
@@ -471,11 +522,7 @@ def filter_warnings(query: dict[str, object], row: dict[str, str]) -> list[str]:
 def flatten_item(query: dict[str, object], result_count: int, item: dict[str, object]) -> dict[str, str]:
     price = item.get("price") if isinstance(item.get("price"), dict) else {}
     shipping_options = item.get("shippingOptions")
-    shipping = {}
-    if isinstance(shipping_options, list) and shipping_options:
-        shipping_cost = shipping_options[0].get("shippingCost")
-        if isinstance(shipping_cost, dict):
-            shipping = shipping_cost
+    shipping = shipping_from_options(shipping_options, price)
     seller = item.get("seller") if isinstance(item.get("seller"), dict) else {}
     location = item.get("itemLocation") if isinstance(item.get("itemLocation"), dict) else {}
     category = item.get("categoryPath")
