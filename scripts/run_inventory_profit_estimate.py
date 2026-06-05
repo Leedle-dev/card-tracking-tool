@@ -43,6 +43,14 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Recalculate snapshot stats from raw matched listing rows instead of using snapshot tables.",
     )
+    parser.add_argument(
+        "--use-snapshot-tables",
+        action="store_true",
+        help=(
+            "Use precomputed snapshot tables instead of raw rows. Raw recalculation is the default "
+            "so graded listings and variation-parent listings can be excluded."
+        ),
+    )
     parser.add_argument("--shipping-cents", type=int, default=100, help="Estimated shipping cost per card.")
     parser.add_argument(
         "--marketplace-fee-rate",
@@ -289,13 +297,15 @@ def fetch_raw_price_map(args: argparse.Namespace, seller_location_scope: str = "
                         GROUP BY card_id
                     ) latest ON latest.latest_snapshot_id = mps.id
                 )
-                SELECT DISTINCT mlm.card_id, ml.total_price_cents
+                SELECT DISTINCT mlm.card_id, ml.id AS listing_id, ml.total_price_cents
                 FROM marketplace_listing_matches mlm
                 JOIN marketplace_listings ml ON ml.id = mlm.listing_id
                 JOIN latest_snapshots ls ON ls.card_id = mlm.card_id
                     AND ls.fetch_run_id = ml.fetch_run_id
                 WHERE mlm.match_status = 'accepted'
                     AND ml.total_price_cents IS NOT NULL
+                    AND COALESCE(ml.is_variation_listing, 0) = 0
+                    AND LOWER(COALESCE(ml.condition, '')) != 'graded'
                     {marketplace_location_filter}
                 """
             ):
@@ -313,7 +323,7 @@ def fetch_raw_price_map(args: argparse.Namespace, seller_location_scope: str = "
                         GROUP BY card_id
                     ) latest ON latest.latest_snapshot_id = mvps.id
                 )
-                SELECT DISTINCT migvm.card_id, migv.price_cents
+                SELECT DISTINCT migvm.card_id, migv.id AS variation_id, migv.price_cents
                 FROM marketplace_item_group_variation_matches migvm
                 JOIN marketplace_item_group_variations migv ON migv.id = migvm.item_group_variation_id
                 JOIN latest_snapshots ls ON ls.card_id = migvm.card_id
@@ -373,7 +383,8 @@ def attach_price_data(rows: list[sqlite3.Row], price_map: dict[int, dict[str, ob
 
 
 def fetch_rows(args: argparse.Namespace, seller_location_scope: str = "aggregate") -> list[dict[str, object]]:
-    if args.pricing_source == "combined" and not args.recalculate_from_raw:
+    use_raw_recalculation = args.recalculate_from_raw or not args.use_snapshot_tables
+    if args.pricing_source == "combined" and not use_raw_recalculation:
         print("Combined snapshot mode is approximate. Use --recalculate-from-raw for true combined percentiles.")
     inventory_rows = fetch_inventory_rows(
         args.set_code,
@@ -383,7 +394,7 @@ def fetch_rows(args: argparse.Namespace, seller_location_scope: str = "aggregate
     )
     price_map = (
         fetch_raw_price_map(args, seller_location_scope=seller_location_scope)
-        if args.recalculate_from_raw
+        if use_raw_recalculation
         else fetch_snapshot_price_map(args)
     )
     return attach_price_data(inventory_rows, price_map)
