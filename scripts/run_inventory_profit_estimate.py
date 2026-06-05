@@ -20,6 +20,12 @@ def parse_args() -> argparse.Namespace:
     #   --set-code CBB5C --shipping-cents 100 --marketplace-fee-rate 0.1325
     #   --output reports/inventory/cbb5c_inventory_profit_estimate.tsv
     parser.add_argument("--set-code", default="", help="Optional set code filter, such as CBB5C.")
+    parser.add_argument("--card-id", type=int, help="Optional cards.id filter for one card.")
+    parser.add_argument(
+        "--include-reference",
+        action="store_true",
+        help="Include card_inventory rows with sale_status='reference'. Useful for pricing reference cards.",
+    )
     parser.add_argument(
         "--db-path",
         type=Path,
@@ -57,6 +63,11 @@ def parse_args() -> argparse.Namespace:
         help="Floor per-card estimate to this cent increment after shipping.",
     )
     parser.add_argument("--output", default="", help="Optional TSV output path.")
+    parser.add_argument(
+        "--seller-location-split",
+        action="store_true",
+        help="Write separate TSVs for US sellers, international sellers, and aggregate pricing.",
+    )
     return parser.parse_args()
 
 
@@ -123,12 +134,22 @@ def add_shipping(value: float | int | None, shipping_cents: int) -> float | int 
     return None if value is None else value + shipping_cents
 
 
-def fetch_inventory_rows(set_code: str, db_path: Path) -> list[sqlite3.Row]:
+def fetch_inventory_rows(
+    set_code: str,
+    db_path: Path,
+    card_id: int | None = None,
+    include_reference: bool = False,
+) -> list[sqlite3.Row]:
     set_filter = ""
-    params: list[str] = []
+    card_filter = ""
+    sale_status_filter = "" if include_reference else "AND sale_status != 'reference'"
+    params: list[str | int] = []
     if set_code:
         set_filter = "AND LOWER(sc.set_code) = LOWER(?)"
         params.append(set_code)
+    if card_id is not None:
+        card_filter = "AND c.id = ?"
+        params.append(card_id)
 
     query = f"""
         WITH inventory AS (
@@ -136,7 +157,8 @@ def fetch_inventory_rows(set_code: str, db_path: Path) -> list[sqlite3.Row]:
                 card_id,
                 SUM(quantity) AS quantity
             FROM card_inventory
-            WHERE sale_status != 'reference'
+            WHERE 1 = 1
+                {sale_status_filter}
                 AND LOWER(COALESCE(condition, '')) != 'graded'
             GROUP BY card_id
         )
@@ -156,6 +178,7 @@ def fetch_inventory_rows(set_code: str, db_path: Path) -> list[sqlite3.Row]:
         JOIN set_catalog sc ON sc.id = c.set_catalog_id
         WHERE 1 = 1
             {set_filter}
+            {card_filter}
         ORDER BY sc.language, sc.set_name, c.source_sequence, c.card_number, c.id
     """
 
@@ -240,13 +263,23 @@ def fetch_snapshot_price_map(args: argparse.Namespace) -> dict[int, dict[str, ob
     return price_map
 
 
-def fetch_raw_price_map(args: argparse.Namespace) -> dict[int, dict[str, object]]:
+def seller_location_filter(alias: str, seller_location_scope: str) -> str:
+    if seller_location_scope == "us":
+        return f"AND {alias}.item_location_country = 'US'"
+    if seller_location_scope == "international":
+        return f"AND {alias}.item_location_country IS NOT NULL AND {alias}.item_location_country != 'US'"
+    return ""
+
+
+def fetch_raw_price_map(args: argparse.Namespace, seller_location_scope: str = "aggregate") -> dict[int, dict[str, object]]:
     observations: dict[int, list[tuple[str, int]]] = {}
+    marketplace_location_filter = seller_location_filter("ml", seller_location_scope)
+    variation_location_filter = seller_location_filter("migv", seller_location_scope)
     with sqlite3.connect(args.db_path) as conn:
         conn.row_factory = sqlite3.Row
         if args.pricing_source in {"marketplace", "combined"}:
             for row in conn.execute(
-                """
+                f"""
                 WITH latest_snapshots AS (
                     SELECT mps.card_id, mps.fetch_run_id
                     FROM marketplace_price_snapshots mps
@@ -263,13 +296,14 @@ def fetch_raw_price_map(args: argparse.Namespace) -> dict[int, dict[str, object]
                     AND ls.fetch_run_id = ml.fetch_run_id
                 WHERE mlm.match_status = 'accepted'
                     AND ml.total_price_cents IS NOT NULL
+                    {marketplace_location_filter}
                 """
             ):
                 observations.setdefault(int(row["card_id"]), []).append(("marketplace", int(row["total_price_cents"])))
 
         if args.pricing_source in {"variations", "combined"}:
             for row in conn.execute(
-                """
+                f"""
                 WITH latest_snapshots AS (
                     SELECT mvps.card_id, mvps.fetch_run_id
                     FROM marketplace_variation_price_snapshots mvps
@@ -287,6 +321,7 @@ def fetch_raw_price_map(args: argparse.Namespace) -> dict[int, dict[str, object]
                 WHERE migv.price_cents IS NOT NULL
                     AND UPPER(COALESCE(migv.estimated_availability_status, '')) != 'OUT_OF_STOCK'
                     AND COALESCE(migv.estimated_available_quantity, 1) > 0
+                    {variation_location_filter}
                 """
             ):
                 observations.setdefault(int(row["card_id"]), []).append(
@@ -304,6 +339,7 @@ def fetch_raw_price_map(args: argparse.Namespace) -> dict[int, dict[str, object]
                 "pricing_source_used": args.pricing_source + "_raw",
                 "marketplace_listing_count": marketplace_count,
                 "variation_listing_count": variation_count,
+                "seller_location_scope": seller_location_scope,
                 "snapshot_created_at": "recalculated_from_raw",
             }
         )
@@ -318,6 +354,7 @@ def attach_price_data(rows: list[sqlite3.Row], price_map: dict[int, dict[str, ob
         item.update(
             {
                 "pricing_source_used": "",
+                "seller_location_scope": "",
                 "listing_count": None,
                 "marketplace_listing_count": 0,
                 "variation_listing_count": 0,
@@ -335,11 +372,20 @@ def attach_price_data(rows: list[sqlite3.Row], price_map: dict[int, dict[str, ob
     return combined_rows
 
 
-def fetch_rows(args: argparse.Namespace) -> list[dict[str, object]]:
+def fetch_rows(args: argparse.Namespace, seller_location_scope: str = "aggregate") -> list[dict[str, object]]:
     if args.pricing_source == "combined" and not args.recalculate_from_raw:
         print("Combined snapshot mode is approximate. Use --recalculate-from-raw for true combined percentiles.")
-    inventory_rows = fetch_inventory_rows(args.set_code, args.db_path)
-    price_map = fetch_raw_price_map(args) if args.recalculate_from_raw else fetch_snapshot_price_map(args)
+    inventory_rows = fetch_inventory_rows(
+        args.set_code,
+        args.db_path,
+        card_id=args.card_id,
+        include_reference=args.include_reference,
+    )
+    price_map = (
+        fetch_raw_price_map(args, seller_location_scope=seller_location_scope)
+        if args.recalculate_from_raw
+        else fetch_snapshot_price_map(args)
+    )
     return attach_price_data(inventory_rows, price_map)
 
 
@@ -362,6 +408,7 @@ def write_report(rows: list[dict[str, object]], args: argparse.Namespace, output
         "rarity",
         "holo_pattern",
         "pricing_source_used",
+        "seller_location_scope",
         "listing_count",
         "marketplace_listing_count",
         "variation_listing_count",
@@ -437,6 +484,7 @@ def write_report(rows: list[dict[str, object]], args: argparse.Namespace, output
                     "rarity": row["rarity"],
                     "holo_pattern": row["holo_pattern"],
                     "pricing_source_used": row["pricing_source_used"],
+                    "seller_location_scope": row["seller_location_scope"],
                     "listing_count": row["listing_count"],
                     "marketplace_listing_count": row["marketplace_listing_count"],
                     "variation_listing_count": row["variation_listing_count"],
@@ -477,9 +525,6 @@ def write_report(rows: list[dict[str, object]], args: argparse.Namespace, output
 
 def main() -> None:
     args = parse_args()
-    rows = fetch_rows(args)
-    if not rows:
-        raise SystemExit("No non-reference inventory rows found for the requested filters.")
 
     if args.output:
         output_path = Path(args.output)
@@ -488,6 +533,32 @@ def main() -> None:
     else:
         name = f"{args.set_code.lower()}_" if args.set_code else ""
         output_path = DEFAULT_OUTPUT_DIR / f"{name}inventory_profit_estimate.tsv"
+
+    if args.seller_location_split:
+        args.recalculate_from_raw = True
+        scopes = [
+            ("us_sellers", "us"),
+            ("international_sellers", "international"),
+            ("aggregate", "aggregate"),
+        ]
+        totals = {}
+        for suffix, scope in scopes:
+            rows = fetch_rows(args, seller_location_scope=scope)
+            if not rows:
+                raise SystemExit("No inventory rows found for the requested filters.")
+            scoped_output_path = output_path.with_name(f"{output_path.stem}_{suffix}{output_path.suffix}")
+            totals[suffix] = write_report(rows, args, scoped_output_path)
+            print(scoped_output_path)
+        aggregate_total = totals["aggregate"]
+        print(f"Cards with inventory: {len(fetch_rows(args, seller_location_scope='aggregate'))}")
+        print(f"Total quantity: {aggregate_total[0]}")
+        print(f"Total gross after shipping: {cents_to_dollars(aggregate_total[1])}")
+        print(f"Total net after {args.marketplace_fee_rate:.4f} marketplace fee: {cents_to_dollars(aggregate_total[2])}")
+        return
+
+    rows = fetch_rows(args)
+    if not rows:
+        raise SystemExit("No inventory rows found for the requested filters.")
 
     total_quantity, total_gross_cents, total_net_cents = write_report(rows, args, output_path)
 
