@@ -333,10 +333,25 @@ def search_query_text(query: dict[str, object]) -> str:
         Houndoom 066 Shrouded Fable
     """
 
+    override = str(query.get("query_override") or "").strip()
+    if override:
+        return override
+
+    query_style = str(query.get("query_style") or "set-name").strip().lower()
+    number_prefix = card_number_search_prefix(str(query["card_number"]))
+    if query_style == "set-code":
+        return " ".join([str(query["pokemon_name"]), number_prefix, str(query["set_code"])])
+    if query_style == "set-name-and-code":
+        return " ".join([str(query["pokemon_name"]), number_prefix, str(query["set_name"]), str(query["set_code"])])
+    if query_style == "name-number":
+        return " ".join([str(query["pokemon_name"]), number_prefix])
+    if query_style == "full-number-set-code":
+        return " ".join([str(query["pokemon_name"]), str(query["card_number"]), str(query["set_code"])])
+
     return " ".join(
         [
             str(query["pokemon_name"]),
-            card_number_search_prefix(str(query["card_number"])),
+            number_prefix,
             str(query["set_name"]),
         ]
     )

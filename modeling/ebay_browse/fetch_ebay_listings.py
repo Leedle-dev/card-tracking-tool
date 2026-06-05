@@ -55,7 +55,7 @@ def language_key(language: str | None, source_region: str | None) -> str:
     return value or "unknown"
 
 
-def build_query(card: Card, set_catalog: SetCatalog, limit: int) -> dict[str, object]:
+def build_query(card: Card, set_catalog: SetCatalog, limit: int, query_style: str = "set-name") -> dict[str, object]:
     pokemon_name = card.pokemon_name or card.name
     language = language_key(set_catalog.language, set_catalog.source_region)
     label_parts = [
@@ -75,6 +75,7 @@ def build_query(card: Card, set_catalog: SetCatalog, limit: int) -> dict[str, ob
         "card_number": card.card_number or "",
         "set_code": set_catalog.set_code or "",
         "set_name": set_catalog.set_name,
+        "query_style": query_style,
         "limit": limit,
     }
 
@@ -85,6 +86,7 @@ def load_card_queries(
     limit: int,
     db_path: Path,
     card_id: int | None = None,
+    query_style: str = "set-name",
 ) -> list[dict[str, object]]:
     with session_scope(db_path=db_path) as session:
         statement = (
@@ -97,7 +99,7 @@ def load_card_queries(
         if card_id is not None:
             statement = statement.where(Card.id == card_id)
         rows = session.execute(statement).all()
-        return [build_query(card, set_catalog, limit) for card, set_catalog in rows]
+        return [build_query(card, set_catalog, limit, query_style=query_style) for card, set_catalog in rows]
 
 
 def parse_args() -> argparse.Namespace:
@@ -112,6 +114,16 @@ def parse_args() -> argparse.Namespace:
         "--card-id",
         type=int,
         help="Optional cards.id filter to fetch pricing for one card in the set.",
+    )
+    parser.add_argument(
+        "--query-style",
+        choices=["set-name", "set-code", "set-name-and-code", "name-number", "full-number-set-code"],
+        default="set-name",
+        help="Search query shape. Default matches the existing set-name search behavior.",
+    )
+    parser.add_argument(
+        "--search-query",
+        help="Manual eBay search text override. Use with --card-id for one-card experiments.",
     )
     parser.add_argument("--limit", type=int, default=DEFAULT_LIMIT, help="eBay Browse results per card query.")
     parser.add_argument(
@@ -157,12 +169,23 @@ def main() -> None:
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     output_label = slugify(f"{args.set_code}_{args.set_name}")
 
-    queries = load_card_queries(args.set_code, args.set_name, args.limit, args.db_path, card_id=args.card_id)
+    queries = load_card_queries(
+        args.set_code,
+        args.set_name,
+        args.limit,
+        args.db_path,
+        card_id=args.card_id,
+        query_style=args.query_style,
+    )
     if args.max_cards is not None:
         queries = queries[: args.max_cards]
 
     if not queries:
         raise SystemExit(f"No cards found for set_code={args.set_code!r} and set_name={args.set_name!r}.")
+    if args.search_query:
+        if len(queries) != 1:
+            raise SystemExit("--search-query requires a single-card fetch. Add --card-id or --max-cards 1.")
+        queries[0]["query_override"] = args.search_query
 
     if args.dry_run:
         for query in queries:
