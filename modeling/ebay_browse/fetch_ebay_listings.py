@@ -79,7 +79,13 @@ def build_query(card: Card, set_catalog: SetCatalog, limit: int) -> dict[str, ob
     }
 
 
-def load_card_queries(set_code: str, set_name: str, limit: int, db_path: Path) -> list[dict[str, object]]:
+def load_card_queries(
+    set_code: str,
+    set_name: str,
+    limit: int,
+    db_path: Path,
+    card_id: int | None = None,
+) -> list[dict[str, object]]:
     with session_scope(db_path=db_path) as session:
         statement = (
             select(Card, SetCatalog)
@@ -88,6 +94,8 @@ def load_card_queries(set_code: str, set_name: str, limit: int, db_path: Path) -
             .where(func.lower(SetCatalog.set_name) == set_name.lower())
             .order_by(Card.source_sequence, Card.card_number, Card.id)
         )
+        if card_id is not None:
+            statement = statement.where(Card.id == card_id)
         rows = session.execute(statement).all()
         return [build_query(card, set_catalog, limit) for card, set_catalog in rows]
 
@@ -100,6 +108,11 @@ def parse_args() -> argparse.Namespace:
     #   python modeling/ebay_browse/fetch_ebay_listings.py --set-code CBB5C --set-name "Gem Pack Vol. 5"
     parser.add_argument("--set-code", required=True, help="Set code from set_catalog, such as CBB5C.")
     parser.add_argument("--set-name", required=True, help='Set name from set_catalog, such as "Gem Pack Vol. 5".')
+    parser.add_argument(
+        "--card-id",
+        type=int,
+        help="Optional cards.id filter to fetch pricing for one card in the set.",
+    )
     parser.add_argument("--limit", type=int, default=DEFAULT_LIMIT, help="eBay Browse results per card query.")
     parser.add_argument(
         "--db-path",
@@ -144,7 +157,7 @@ def main() -> None:
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     output_label = slugify(f"{args.set_code}_{args.set_name}")
 
-    queries = load_card_queries(args.set_code, args.set_name, args.limit, args.db_path)
+    queries = load_card_queries(args.set_code, args.set_name, args.limit, args.db_path, card_id=args.card_id)
     if args.max_cards is not None:
         queries = queries[: args.max_cards]
 
