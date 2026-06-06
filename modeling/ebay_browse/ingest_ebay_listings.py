@@ -98,6 +98,13 @@ def int_from_text(text: str | None) -> int | None:
         return None
 
 
+def nonnegative_int_from_text(text: str | None) -> int | None:
+    value = int_from_text(text)
+    if value is None or value < 0:
+        return None
+    return value
+
+
 def float_from_text(text: str | None) -> float | None:
     if text is None or not str(text).strip():
         return None
@@ -265,7 +272,7 @@ def listing_from_row(row: dict[str, str], fetch_run_id: int, source_id: int, raw
         item_group_href=row.get("item_group_href") or None,
         item_group_type=row.get("item_group_type") or None,
         item_location_country=row.get("item_location_country") or None,
-        seller_feedback_score=int_from_text(row.get("seller_feedback_score")),
+        seller_feedback_score=nonnegative_int_from_text(row.get("seller_feedback_score")),
         seller_feedback_percentage=float_from_text(row.get("seller_feedback_percentage")),
         item_creation_date=row.get("item_creation_date") or None,
         item_end_date=row.get("item_end_date") or None,
