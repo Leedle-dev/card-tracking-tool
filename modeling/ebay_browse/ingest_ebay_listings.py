@@ -10,7 +10,7 @@ import re
 import statistics
 import sys
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -301,6 +301,179 @@ def apply_listing_update(existing: MarketplaceListing, incoming: MarketplaceList
     return changed
 
 
+def mirror_listing_to_split_table(session, listing: MarketplaceListing) -> None:
+    params = {
+        "id": listing.id,
+        "fetch_run_id": listing.fetch_run_id,
+        "source_id": listing.source_id,
+        "external_item_id": listing.external_item_id,
+        "legacy_item_id": listing.legacy_item_id,
+        "item_web_url": listing.item_web_url,
+        "title": listing.title,
+        "condition": listing.condition,
+        "buying_options": listing.buying_options,
+        "price_cents": listing.price_cents,
+        "shipping_cents": listing.shipping_cents,
+        "total_price_cents": listing.total_price_cents,
+        "currency": listing.currency,
+        "item_group_href": listing.item_group_href,
+        "item_group_type": listing.item_group_type,
+        "item_location_country": listing.item_location_country,
+        "seller_feedback_score": listing.seller_feedback_score,
+        "seller_feedback_percentage": listing.seller_feedback_percentage,
+        "item_creation_date": listing.item_creation_date,
+        "item_end_date": listing.item_end_date,
+        "image_url": listing.image_url,
+        "raw_json_path": listing.raw_json_path,
+        "checked_at": listing.checked_at,
+        "created_at": listing.created_at,
+    }
+
+    if listing.is_variation_listing:
+        session.execute(text("DELETE FROM marketplace_listings_singles WHERE id = :id"), {"id": listing.id})
+        session.execute(
+            text(
+                """
+                INSERT INTO marketplace_listings_variations (
+                    id, fetch_run_id, source_id, external_item_id, legacy_item_id, item_web_url,
+                    title, condition, buying_options, price_cents, shipping_cents, total_price_cents,
+                    currency, item_group_href, item_group_type, item_location_country, seller_feedback_score,
+                    seller_feedback_percentage, item_creation_date, item_end_date, image_url, raw_json_path,
+                    checked_at, created_at
+                )
+                VALUES (
+                    :id, :fetch_run_id, :source_id, :external_item_id, :legacy_item_id, :item_web_url,
+                    :title, :condition, :buying_options, :price_cents, :shipping_cents, :total_price_cents,
+                    :currency, :item_group_href, :item_group_type, :item_location_country, :seller_feedback_score,
+                    :seller_feedback_percentage, :item_creation_date, :item_end_date, :image_url, :raw_json_path,
+                    :checked_at, :created_at
+                )
+                ON CONFLICT(id) DO UPDATE SET
+                    fetch_run_id = excluded.fetch_run_id,
+                    source_id = excluded.source_id,
+                    external_item_id = excluded.external_item_id,
+                    legacy_item_id = excluded.legacy_item_id,
+                    item_web_url = excluded.item_web_url,
+                    title = excluded.title,
+                    condition = excluded.condition,
+                    buying_options = excluded.buying_options,
+                    price_cents = excluded.price_cents,
+                    shipping_cents = excluded.shipping_cents,
+                    total_price_cents = excluded.total_price_cents,
+                    currency = excluded.currency,
+                    item_group_href = excluded.item_group_href,
+                    item_group_type = excluded.item_group_type,
+                    item_location_country = excluded.item_location_country,
+                    seller_feedback_score = excluded.seller_feedback_score,
+                    seller_feedback_percentage = excluded.seller_feedback_percentage,
+                    item_creation_date = excluded.item_creation_date,
+                    item_end_date = excluded.item_end_date,
+                    image_url = excluded.image_url,
+                    raw_json_path = excluded.raw_json_path,
+                    checked_at = excluded.checked_at
+                """
+            ),
+            params,
+        )
+        return
+
+    session.execute(text("DELETE FROM marketplace_listings_variations WHERE id = :id"), {"id": listing.id})
+    session.execute(
+        text(
+            """
+            INSERT INTO marketplace_listings_singles (
+                id, fetch_run_id, source_id, external_item_id, legacy_item_id, item_web_url,
+                title, condition, buying_options, price_cents, shipping_cents, total_price_cents,
+                currency, item_location_country, seller_feedback_score, seller_feedback_percentage,
+                item_creation_date, item_end_date, image_url, raw_json_path, checked_at, created_at
+            )
+            VALUES (
+                :id, :fetch_run_id, :source_id, :external_item_id, :legacy_item_id, :item_web_url,
+                :title, :condition, :buying_options, :price_cents, :shipping_cents, :total_price_cents,
+                :currency, :item_location_country, :seller_feedback_score, :seller_feedback_percentage,
+                :item_creation_date, :item_end_date, :image_url, :raw_json_path, :checked_at, :created_at
+            )
+            ON CONFLICT(id) DO UPDATE SET
+                fetch_run_id = excluded.fetch_run_id,
+                source_id = excluded.source_id,
+                external_item_id = excluded.external_item_id,
+                legacy_item_id = excluded.legacy_item_id,
+                item_web_url = excluded.item_web_url,
+                title = excluded.title,
+                condition = excluded.condition,
+                buying_options = excluded.buying_options,
+                price_cents = excluded.price_cents,
+                shipping_cents = excluded.shipping_cents,
+                total_price_cents = excluded.total_price_cents,
+                currency = excluded.currency,
+                item_location_country = excluded.item_location_country,
+                seller_feedback_score = excluded.seller_feedback_score,
+                seller_feedback_percentage = excluded.seller_feedback_percentage,
+                item_creation_date = excluded.item_creation_date,
+                item_end_date = excluded.item_end_date,
+                image_url = excluded.image_url,
+                raw_json_path = excluded.raw_json_path,
+                checked_at = excluded.checked_at
+            """
+        ),
+        params,
+    )
+
+
+def mirror_match_to_split_table(
+    session,
+    listing: MarketplaceListing,
+    query_id: int,
+    card_id: int,
+    status: str,
+    filter_reasons: str | None,
+    filter_warnings: str | None,
+) -> int:
+    if listing.is_variation_listing:
+        if status != "variation":
+            return 0
+        session.execute(
+            text(
+                """
+                INSERT OR IGNORE INTO marketplace_listing_variation_matches (
+                    listing_id, query_id, card_id, match_status, filter_reasons, filter_warnings
+                )
+                VALUES (:listing_id, :query_id, :card_id, 'variation', :filter_reasons, :filter_warnings)
+                """
+            ),
+            {
+                "listing_id": listing.id,
+                "query_id": query_id,
+                "card_id": card_id,
+                "filter_reasons": filter_reasons,
+                "filter_warnings": filter_warnings,
+            },
+        )
+        return 1
+
+    if status == "variation":
+        return 0
+    session.execute(
+        text(
+            """
+            INSERT OR IGNORE INTO marketplace_listing_single_matches (
+                listing_id, query_id, card_id, match_status, filter_reasons, filter_warnings
+            )
+            VALUES (:listing_id, :query_id, :card_id, :match_status, :filter_reasons, :filter_warnings)
+            """
+        ),
+        {
+            "listing_id": listing.id,
+            "query_id": query_id,
+            "card_id": card_id,
+            "match_status": status,
+            "filter_reasons": filter_reasons,
+            "filter_warnings": filter_warnings,
+        },
+    )
+    return 1
+
+
 def percentile(values: list[int], percent: float) -> float | None:
     if not values:
         return None
@@ -450,6 +623,7 @@ def ingest_run(
         listings_created = 0
         listings_updated = 0
         listings_unchanged = 0
+        split_matches = 0
 
         for status, rows in rows_by_status:
             for row in rows:
@@ -478,6 +652,7 @@ def ingest_run(
                         listings_updated += 1
                     else:
                         listings_unchanged += 1
+                    mirror_listing_to_split_table(session, listing)
                     listing_by_item_id[item_id] = listing
 
                 match = MarketplaceListingMatch(
@@ -490,6 +665,15 @@ def ingest_run(
                 )
                 session.add(match)
                 match_count += 1
+                split_matches += mirror_match_to_split_table(
+                    session,
+                    listing,
+                    query_row.id,
+                    query_row.card_id,
+                    status,
+                    row.get("filter_reasons") or None,
+                    row.get("filter_warnings") or None,
+                )
 
                 if status == "accepted":
                     accepted_listings_by_card.setdefault(query_row.card_id, []).append(listing)
@@ -519,6 +703,7 @@ def ingest_run(
             "listings_updated": listings_updated,
             "listings_unchanged": listings_unchanged,
             "matches": match_count,
+            "split_matches": split_matches,
             "price_snapshots": len(query_by_label),
             "variation_price_snapshots": len(query_by_label),
         }
@@ -541,6 +726,7 @@ def main() -> None:
         f"listings_updated={result['listings_updated']} "
         f"listings_unchanged={result['listings_unchanged']} "
         f"matches={result['matches']} "
+        f"split_matches={result['split_matches']} "
         f"price_snapshots={result['price_snapshots']}"
         f" variation_price_snapshots={result['variation_price_snapshots']}"
     )

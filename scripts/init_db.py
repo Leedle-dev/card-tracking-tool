@@ -550,6 +550,180 @@ def backfill_grading_profile_company_links(conn: sqlite3.Connection) -> None:
     )
 
 
+def backfill_marketplace_listing_split_tables(conn: sqlite3.Connection) -> None:
+    required_tables = {
+        "marketplace_listings",
+        "marketplace_listing_matches",
+        "marketplace_listings_singles",
+        "marketplace_listings_variations",
+        "marketplace_listing_single_matches",
+        "marketplace_listing_variation_matches",
+    }
+    if not all(table_exists(conn, table_name) for table_name in required_tables):
+        return
+
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO marketplace_listings_singles (
+            id,
+            fetch_run_id,
+            source_id,
+            external_item_id,
+            legacy_item_id,
+            item_web_url,
+            title,
+            condition,
+            buying_options,
+            price_cents,
+            shipping_cents,
+            total_price_cents,
+            currency,
+            item_location_country,
+            seller_feedback_score,
+            seller_feedback_percentage,
+            item_creation_date,
+            item_end_date,
+            image_url,
+            raw_json_path,
+            checked_at,
+            created_at
+        )
+        SELECT
+            id,
+            fetch_run_id,
+            source_id,
+            external_item_id,
+            legacy_item_id,
+            item_web_url,
+            title,
+            condition,
+            buying_options,
+            price_cents,
+            shipping_cents,
+            total_price_cents,
+            currency,
+            item_location_country,
+            seller_feedback_score,
+            seller_feedback_percentage,
+            item_creation_date,
+            item_end_date,
+            image_url,
+            raw_json_path,
+            checked_at,
+            created_at
+        FROM marketplace_listings
+        WHERE COALESCE(is_variation_listing, 0) = 0
+        """
+    )
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO marketplace_listings_variations (
+            id,
+            fetch_run_id,
+            source_id,
+            external_item_id,
+            legacy_item_id,
+            item_web_url,
+            title,
+            condition,
+            buying_options,
+            price_cents,
+            shipping_cents,
+            total_price_cents,
+            currency,
+            item_group_href,
+            item_group_type,
+            item_location_country,
+            seller_feedback_score,
+            seller_feedback_percentage,
+            item_creation_date,
+            item_end_date,
+            image_url,
+            raw_json_path,
+            checked_at,
+            created_at
+        )
+        SELECT
+            id,
+            fetch_run_id,
+            source_id,
+            external_item_id,
+            legacy_item_id,
+            item_web_url,
+            title,
+            condition,
+            buying_options,
+            price_cents,
+            shipping_cents,
+            total_price_cents,
+            currency,
+            item_group_href,
+            item_group_type,
+            item_location_country,
+            seller_feedback_score,
+            seller_feedback_percentage,
+            item_creation_date,
+            item_end_date,
+            image_url,
+            raw_json_path,
+            checked_at,
+            created_at
+        FROM marketplace_listings
+        WHERE COALESCE(is_variation_listing, 0) = 1
+        """
+    )
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO marketplace_listing_single_matches (
+            listing_id,
+            query_id,
+            card_id,
+            match_status,
+            filter_reasons,
+            filter_warnings,
+            created_at
+        )
+        SELECT
+            mlm.listing_id,
+            mlm.query_id,
+            mlm.card_id,
+            mlm.match_status,
+            mlm.filter_reasons,
+            mlm.filter_warnings,
+            mlm.created_at
+        FROM marketplace_listing_matches mlm
+        JOIN marketplace_listings ml ON ml.id = mlm.listing_id
+        WHERE COALESCE(ml.is_variation_listing, 0) = 0
+            AND mlm.match_status IN ('accepted', 'rejected')
+        """
+    )
+    conn.execute(
+        """
+        INSERT OR IGNORE INTO marketplace_listing_variation_matches (
+            listing_id,
+            query_id,
+            card_id,
+            match_status,
+            filter_reasons,
+            filter_warnings,
+            created_at
+        )
+        SELECT
+            mlm.listing_id,
+            mlm.query_id,
+            mlm.card_id,
+            'variation',
+            mlm.filter_reasons,
+            mlm.filter_warnings,
+            mlm.created_at
+        FROM marketplace_listing_matches mlm
+        JOIN marketplace_listings ml ON ml.id = mlm.listing_id
+        WHERE COALESCE(ml.is_variation_listing, 0) = 1
+            AND mlm.match_status = 'variation'
+        """
+    )
+
+
 def main() -> None:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     schema = SCHEMA_PATH.read_text(encoding="utf-8")
@@ -562,6 +736,7 @@ def main() -> None:
         backfill_card_set_catalog_links(conn)
         backfill_card_inventory(conn)
         backfill_illustrator_years(conn)
+        backfill_marketplace_listing_split_tables(conn)
         conn.executemany(
             """
             INSERT INTO marketplace_sources (name, website_url, notes)
@@ -628,6 +803,7 @@ def main() -> None:
             ],
         )
         backfill_grading_profile_company_links(conn)
+        backfill_marketplace_listing_split_tables(conn)
 
     print(f"Database initialized at {DB_PATH}")
 

@@ -376,6 +376,100 @@ CREATE TABLE IF NOT EXISTS marketplace_listing_matches (
     UNIQUE (listing_id, query_id, card_id)
 );
 
+CREATE TABLE IF NOT EXISTS marketplace_listings_singles (
+    id INTEGER PRIMARY KEY,
+    fetch_run_id INTEGER NOT NULL,
+    source_id INTEGER NOT NULL,
+    external_item_id TEXT NOT NULL,
+    legacy_item_id TEXT,
+    item_web_url TEXT,
+    title TEXT NOT NULL,
+    condition TEXT,
+    buying_options TEXT,
+    price_cents INTEGER CHECK (price_cents IS NULL OR price_cents >= 0),
+    shipping_cents INTEGER CHECK (shipping_cents IS NULL OR shipping_cents >= 0),
+    total_price_cents INTEGER CHECK (total_price_cents IS NULL OR total_price_cents >= 0),
+    currency TEXT NOT NULL DEFAULT 'USD',
+    item_location_country TEXT,
+    seller_feedback_score INTEGER CHECK (seller_feedback_score IS NULL OR seller_feedback_score >= 0),
+    seller_feedback_percentage REAL CHECK (
+        seller_feedback_percentage IS NULL
+        OR (seller_feedback_percentage >= 0 AND seller_feedback_percentage <= 100)
+    ),
+    item_creation_date TEXT,
+    item_end_date TEXT,
+    image_url TEXT,
+    raw_json_path TEXT,
+    checked_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (fetch_run_id) REFERENCES marketplace_listing_fetch_runs(id) ON DELETE CASCADE,
+    FOREIGN KEY (source_id) REFERENCES marketplace_sources(id),
+    UNIQUE (fetch_run_id, external_item_id)
+);
+
+CREATE TABLE IF NOT EXISTS marketplace_listings_variations (
+    id INTEGER PRIMARY KEY,
+    fetch_run_id INTEGER NOT NULL,
+    source_id INTEGER NOT NULL,
+    external_item_id TEXT NOT NULL,
+    legacy_item_id TEXT,
+    item_web_url TEXT,
+    title TEXT NOT NULL,
+    condition TEXT,
+    buying_options TEXT,
+    price_cents INTEGER CHECK (price_cents IS NULL OR price_cents >= 0),
+    shipping_cents INTEGER CHECK (shipping_cents IS NULL OR shipping_cents >= 0),
+    total_price_cents INTEGER CHECK (total_price_cents IS NULL OR total_price_cents >= 0),
+    currency TEXT NOT NULL DEFAULT 'USD',
+    item_group_href TEXT,
+    item_group_type TEXT,
+    item_location_country TEXT,
+    seller_feedback_score INTEGER CHECK (seller_feedback_score IS NULL OR seller_feedback_score >= 0),
+    seller_feedback_percentage REAL CHECK (
+        seller_feedback_percentage IS NULL
+        OR (seller_feedback_percentage >= 0 AND seller_feedback_percentage <= 100)
+    ),
+    item_creation_date TEXT,
+    item_end_date TEXT,
+    image_url TEXT,
+    raw_json_path TEXT,
+    checked_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (fetch_run_id) REFERENCES marketplace_listing_fetch_runs(id) ON DELETE CASCADE,
+    FOREIGN KEY (source_id) REFERENCES marketplace_sources(id),
+    UNIQUE (fetch_run_id, external_item_id)
+);
+
+CREATE TABLE IF NOT EXISTS marketplace_listing_single_matches (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    listing_id INTEGER NOT NULL,
+    query_id INTEGER NOT NULL,
+    card_id INTEGER NOT NULL,
+    match_status TEXT NOT NULL CHECK (match_status IN ('accepted', 'rejected')),
+    filter_reasons TEXT,
+    filter_warnings TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (listing_id) REFERENCES marketplace_listings_singles(id) ON DELETE CASCADE,
+    FOREIGN KEY (query_id) REFERENCES marketplace_listing_queries(id) ON DELETE CASCADE,
+    FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE,
+    UNIQUE (listing_id, query_id, card_id)
+);
+
+CREATE TABLE IF NOT EXISTS marketplace_listing_variation_matches (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    listing_id INTEGER NOT NULL,
+    query_id INTEGER NOT NULL,
+    card_id INTEGER NOT NULL,
+    match_status TEXT NOT NULL DEFAULT 'variation' CHECK (match_status = 'variation'),
+    filter_reasons TEXT,
+    filter_warnings TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (listing_id) REFERENCES marketplace_listings_variations(id) ON DELETE CASCADE,
+    FOREIGN KEY (query_id) REFERENCES marketplace_listing_queries(id) ON DELETE CASCADE,
+    FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE,
+    UNIQUE (listing_id, query_id, card_id)
+);
+
 CREATE TABLE IF NOT EXISTS marketplace_price_snapshots (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     fetch_run_id INTEGER NOT NULL,
@@ -520,6 +614,22 @@ CREATE INDEX IF NOT EXISTS idx_marketplace_listings_price
 ON marketplace_listings(total_price_cents, currency);
 CREATE INDEX IF NOT EXISTS idx_marketplace_listing_matches_card_status
 ON marketplace_listing_matches(card_id, match_status);
+CREATE INDEX IF NOT EXISTS idx_marketplace_listings_singles_run_source
+ON marketplace_listings_singles(fetch_run_id, source_id);
+CREATE INDEX IF NOT EXISTS idx_marketplace_listings_singles_external_item
+ON marketplace_listings_singles(source_id, external_item_id);
+CREATE INDEX IF NOT EXISTS idx_marketplace_listings_singles_price
+ON marketplace_listings_singles(total_price_cents, currency);
+CREATE INDEX IF NOT EXISTS idx_marketplace_listings_variations_run_source
+ON marketplace_listings_variations(fetch_run_id, source_id);
+CREATE INDEX IF NOT EXISTS idx_marketplace_listings_variations_external_item
+ON marketplace_listings_variations(source_id, external_item_id);
+CREATE INDEX IF NOT EXISTS idx_marketplace_listings_variations_group
+ON marketplace_listings_variations(item_group_href, item_group_type);
+CREATE INDEX IF NOT EXISTS idx_marketplace_listing_single_matches_card_status
+ON marketplace_listing_single_matches(card_id, match_status);
+CREATE INDEX IF NOT EXISTS idx_marketplace_listing_variation_matches_card_status
+ON marketplace_listing_variation_matches(card_id, match_status);
 CREATE INDEX IF NOT EXISTS idx_marketplace_price_snapshots_card
 ON marketplace_price_snapshots(card_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_marketplace_variation_snapshots_card

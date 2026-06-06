@@ -298,13 +298,12 @@ def fetch_raw_price_map(args: argparse.Namespace, seller_location_scope: str = "
                     ) latest ON latest.latest_snapshot_id = mps.id
                 )
                 SELECT DISTINCT mlm.card_id, ml.id AS listing_id, ml.total_price_cents
-                FROM marketplace_listing_matches mlm
-                JOIN marketplace_listings ml ON ml.id = mlm.listing_id
+                FROM marketplace_listing_single_matches mlm
+                JOIN marketplace_listings_singles ml ON ml.id = mlm.listing_id
                 JOIN latest_snapshots ls ON ls.card_id = mlm.card_id
                     AND ls.fetch_run_id = ml.fetch_run_id
                 WHERE mlm.match_status = 'accepted'
                     AND ml.total_price_cents IS NOT NULL
-                    AND COALESCE(ml.is_variation_listing, 0) = 0
                     AND LOWER(COALESCE(ml.condition, '')) != 'graded'
                     {marketplace_location_filter}
                 """
