@@ -339,8 +339,11 @@ def search_query_text(query: dict[str, object]) -> str:
 
     query_style = str(query.get("query_style") or "set-name").strip().lower()
     number_prefix = card_number_search_prefix(str(query["card_number"]))
-    if query_style == "set-code":
-        return " ".join([str(query["pokemon_name"]), number_prefix, str(query["set_code"])])
+    if query_style in {"set-code", "pokemon-number-set-code"}:
+        set_code = str(query["set_code"])
+        if query_style == "pokemon-number-set-code":
+            set_code = set_code.lower()
+        return " ".join([str(query["pokemon_name"]), number_prefix, set_code])
     if query_style == "set-name-and-code":
         return " ".join([str(query["pokemon_name"]), number_prefix, str(query["set_name"]), str(query["set_code"])])
     if query_style == "name-number":

@@ -117,7 +117,14 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--query-style",
-        choices=["set-name", "set-code", "set-name-and-code", "name-number", "full-number-set-code"],
+        choices=[
+            "set-name",
+            "set-code",
+            "pokemon-number-set-code",
+            "set-name-and-code",
+            "name-number",
+            "full-number-set-code",
+        ],
         default="set-name",
         help="Search query shape. Default matches the existing set-name search behavior.",
     )
