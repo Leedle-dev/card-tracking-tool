@@ -52,7 +52,21 @@ Later Phases
 
 Modeling Notes
 
-Grading expected value research lives in modeling/grading_ev/. That folder holds the current grading model assumptions, likely future tables, and the Houndoom case-study template.
+Grading expected value research lives in reports/grading_ev/research_notes/. That folder holds the current grading model assumptions, likely future tables, and the Houndoom case-study template.
+
+Report Organization
+
+Generated report output should live under reports/<report_type>/<timestamp>_<label>/. Scripts with default report output create timestamped report folders automatically; explicit --output or --output-dir arguments still write to the path provided.
+
+Report Builder Framework
+
+Shared report output helpers live in card_tracker/reporting/. Current and future scripts should prefer ReportBuilder for timestamped report folders, TSV/CSV files, raw JSON payloads, text summaries, metadata files, and XLSX workbooks with multiple sheets.
+
+For ad hoc reports, scripts/build_report.py can build a report from a JSON manifest:
+
+C:\Users\Lee\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe scripts\build_report.py path\to\manifest.json
+
+Manifest files support file entries with kind values of tsv, csv, json, text, and xlsx. XLSX entries can include multiple sheets, each with inline rows or a TSV/CSV source, plus simple formatting options such as column widths, fills, hidden columns, currency columns, percent columns, and integer columns.
 
 Development Notes
 

@@ -2,22 +2,31 @@ from pathlib import Path
 import argparse
 import csv
 import statistics
+import sys
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_OUTPUT_DIR = ROOT / "reports" / "photo_qc"
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from card_tracker.report_paths import timestamped_report_dir
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Create a photo QC report and contact sheets for card photos.")
     # Argument examples:
     #   "C:/Users/Lee/Pictures/ebay_card_business/GemPack5 - CBB5C"
-    #   "C:/Users/Lee/Pictures/ebay_card_business/GemPack5 - CBB5C" --output-dir reports/photo_qc/gem_pack_5
+    #   "C:/Users/Lee/Pictures/ebay_card_business/GemPack5 - CBB5C" --output-dir reports/photo_qc/YYYYMMDD_HHMMSS_gem_pack_5
     parser.add_argument("image_dir", help="Folder containing card listing photos.")
-    parser.add_argument("--output-dir", default=str(DEFAULT_OUTPUT_DIR), help="Output folder for QC report files.")
+    parser.add_argument("--output-dir", help="Output folder for QC report files.")
+    parser.add_argument(
+        "--report-label",
+        default="photo_qc",
+        help="Label for the generated timestamped report folder when --output-dir is omitted.",
+    )
     parser.add_argument("--sheet-cols", type=int, default=4, help="Contact sheet columns.")
     parser.add_argument("--thumb-width", type=int, default=360, help="Contact sheet thumbnail width.")
     return parser.parse_args()
@@ -125,8 +134,10 @@ def make_contact_sheets(paths: list[Path], metrics_by_file: dict[str, dict[str, 
 def main() -> None:
     args = parse_args()
     image_dir = Path(args.image_dir)
-    output_dir = Path(args.output_dir)
-    if not output_dir.is_absolute():
+    output_dir = Path(args.output_dir) if args.output_dir else None
+    if output_dir is None:
+        output_dir = timestamped_report_dir("photo_qc", args.report_label)
+    elif not output_dir.is_absolute():
         output_dir = ROOT / output_dir
     output_dir.mkdir(parents=True, exist_ok=True)
 

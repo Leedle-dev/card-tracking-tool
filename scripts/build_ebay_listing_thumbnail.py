@@ -1,26 +1,36 @@
 from pathlib import Path
 import argparse
+import sys
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont, ImageOps
 
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from card_tracker.report_paths import timestamped_report_dir
+
 DEFAULT_PHOTO_DIR = Path(r"C:\Users\Lee\Pictures\ebay_card_business\GemPack5 - CBB5C")
 DEFAULT_LOGO = Path(
     r"C:\Users\Lee\.codex\generated_images\019e6a18-6644-7642-8ec4-5b075c71fc8c"
     r"\ig_0ba3a514c03a7cc9016a1f8e8cda54819b8f6a3c629ac704fe.png"
 )
-DEFAULT_OUTPUT = ROOT / "reports" / "listing_assets" / "gem_pack_vol_5_ebay_thumbnail.png"
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build an eBay listing thumbnail for Gem Pack Vol. 5.")
     # Argument examples:
     #   --photo-dir "C:/Users/Lee/Pictures/ebay_card_business/GemPack5 - CBB5C"
-    #   --output reports/listing_assets/gem_pack_vol_5_ebay_thumbnail.png
+    #   --output reports/listing_thumbnail/YYYYMMDD_HHMMSS_gem_pack_vol_5/gem_pack_vol_5_ebay_thumbnail.png
     parser.add_argument("--photo-dir", default=str(DEFAULT_PHOTO_DIR), help="Folder with renamed card photos.")
     parser.add_argument("--logo", default=str(DEFAULT_LOGO), help="Shop logo image path.")
-    parser.add_argument("--output", default=str(DEFAULT_OUTPUT), help="Output PNG path.")
+    parser.add_argument("--output", help="Output PNG path.")
+    parser.add_argument(
+        "--report-label",
+        default="gem_pack_vol_5",
+        help="Label for the generated timestamped report folder when --output is omitted.",
+    )
     return parser.parse_args()
 
 
@@ -61,7 +71,7 @@ def gradient_background(size: int) -> Image.Image:
 def crop_card(path: Path, bottom_trim: int = 0) -> Image.Image:
     image = ImageOps.exif_transpose(Image.open(path)).convert("RGBA")
     # Crop the physical card from the consistent photo station framing.
-    card = image.crop((1030, 1600, 2050, 3090 - bottom_trim))
+    card = image.crop((1030, 1630, 2050, 3090 - bottom_trim))
     return card
 
 
@@ -119,9 +129,12 @@ def main() -> None:
     args = parse_args()
     photo_dir = Path(args.photo_dir)
     logo_path = Path(args.logo)
-    output = Path(args.output)
-    if not output.is_absolute():
-        output = ROOT / output
+    if args.output:
+        output = Path(args.output)
+        if not output.is_absolute():
+            output = ROOT / output
+    else:
+        output = timestamped_report_dir("listing_thumbnail", args.report_label) / "gem_pack_vol_5_ebay_thumbnail.png"
 
     selected_cards = [
         "0101-07-Captain Pikachu.jpg",
@@ -132,8 +145,9 @@ def main() -> None:
     ]
     bottom_trims = {
         "0101-07-Captain Pikachu.jpg": 60,
-        "0805-07-Houndoom.jpg": 60,
-        "2205-07-Floragato.jpg": 60,
+        "0205-07-Hisuian Growlithe.jpg": 50,
+        "0805-07-Houndoom.jpg": 110,
+        "2205-07-Floragato.jpg": 110,
     }
     cards = [
         crop_card(photo_dir / filename, bottom_trim=bottom_trims.get(filename, 0))
@@ -167,8 +181,8 @@ def main() -> None:
     text_with_stroke(draw, (470, 1425), "CHOOSE YOUR CARD", impact_small, "#9b5de5", stroke_width=7)
     text_with_stroke(draw, (1160, 1425), "FAST US SHIPPING", impact_small, "#35d79f", stroke_width=7)
 
-    draw.rounded_rectangle((635, 1058, 965, 1130), radius=24, fill=(255, 224, 99, 235), outline=(12, 20, 32, 255), width=4)
-    draw.text((800, 1094), "S-CHINESE", font=load_font("arialbd.ttf", 44), fill=(12, 20, 32), anchor="mm")
+    draw.rounded_rectangle((600, 1078, 1000, 1150), radius=24, fill=(255, 224, 99, 235), outline=(12, 20, 32, 255), width=4)
+    draw.text((800, 1114), "Complete Your Set!", font=load_font("arialbd.ttf", 40), fill=(12, 20, 32), anchor="mm")
 
     output.parent.mkdir(parents=True, exist_ok=True)
     canvas.convert("RGB").save(output, quality=95)

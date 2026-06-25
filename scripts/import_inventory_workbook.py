@@ -16,14 +16,19 @@ def parse_args() -> argparse.Namespace:
         description="Import editable inventory counts from a protected inventory workbook."
     )
     # Argument examples:
-    #   reports/inventory/cbb5c_gem_pack_vol_5_inventory.xlsx
-    #   reports/inventory/cbb5c_gem_pack_vol_5_inventory.xlsx --dry-run
-    #   reports/inventory/cbb5c_gem_pack_vol_5_inventory.xlsx --condition raw
+    #   reports/inventory_workbook/YYYYMMDD_HHMMSS_cbb5c/cbb5c_gem_pack_vol_5_inventory.xlsx
+    #   reports/inventory_workbook/YYYYMMDD_HHMMSS_cbb5c/cbb5c_gem_pack_vol_5_inventory.xlsx --dry-run
+    #   reports/inventory_workbook/YYYYMMDD_HHMMSS_cbb5c/cbb5c_gem_pack_vol_5_inventory.xlsx --condition raw
     parser.add_argument("workbook", help="Path to the inventory workbook to import.")
     parser.add_argument("--sheet", default="Inventory", help="Workbook sheet name to read.")
     parser.add_argument("--header-row", type=int, default=4, help="Header row number.")
     parser.add_argument("--condition", default="raw", help="Condition value for imported rows.")
     parser.add_argument("--notes", default=DEFAULT_NOTES, help="Notes marker for imported rows.")
+    parser.add_argument(
+        "--import-label",
+        default="",
+        help="Inventory import batch label. Defaults to the workbook filename stem.",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Validate and summarize without writing.")
     return parser.parse_args()
 
@@ -108,10 +113,45 @@ def validate_card_ids(conn: sqlite3.Connection, card_ids: list[int]) -> None:
         raise ValueError(f"Workbook contains card IDs that are not in the database: {preview}.")
 
 
+def inventory_import_id(
+    conn: sqlite3.Connection,
+    import_label: str,
+    source_path: Path,
+    notes: str,
+) -> int:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS inventory_imports (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            import_label TEXT NOT NULL UNIQUE,
+            import_type TEXT NOT NULL,
+            source_name TEXT,
+            source_path TEXT,
+            notes TEXT,
+            imported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO inventory_imports (import_label, import_type, source_name, source_path, notes)
+        VALUES (?, 'inventory_workbook', 'inventory_workbook', ?, ?)
+        ON CONFLICT(import_label) DO UPDATE SET
+            source_path = excluded.source_path,
+            notes = excluded.notes
+        """,
+        (import_label, str(source_path), notes),
+    )
+    return int(conn.execute("SELECT id FROM inventory_imports WHERE import_label = ?", (import_label,)).fetchone()[0])
+
+
 def import_inventory(
     counts_by_card_id: dict[int, int],
     condition: str,
     notes: str,
+    import_label: str,
+    source_path: Path,
     dry_run: bool,
 ) -> tuple[int, int, int, int]:
     card_ids = sorted(counts_by_card_id)
@@ -135,6 +175,7 @@ def import_inventory(
             return len(card_ids), len(nonzero_items), sum(count for _, count in nonzero_items), rows_to_replace
 
         with conn:
+            batch_id = inventory_import_id(conn, import_label, source_path, notes)
             conn.execute(
                 f"""
                 DELETE FROM card_inventory
@@ -148,6 +189,7 @@ def import_inventory(
                 """
                 INSERT INTO card_inventory (
                     card_id,
+                    import_id,
                     condition,
                     quantity,
                     cost_basis_cents,
@@ -155,9 +197,9 @@ def import_inventory(
                     sale_status,
                     notes
                 )
-                VALUES (?, ?, ?, 0, NULL, 'inventory', ?)
+                VALUES (?, ?, ?, ?, 0, NULL, 'inventory', ?)
                 """,
-                [(card_id, condition, count, notes) for card_id, count in nonzero_items],
+                [(card_id, batch_id, condition, count, notes) for card_id, count in nonzero_items],
             )
 
     return len(card_ids), len(nonzero_items), sum(count for _, count in nonzero_items), rows_to_replace
@@ -166,11 +208,14 @@ def import_inventory(
 def main() -> None:
     args = parse_args()
     path = workbook_path(args.workbook)
+    import_label = args.import_label.strip() or path.stem
     counts_by_card_id = read_inventory_rows(path, args.sheet, args.header_row)
     card_rows, imported_rows, imported_quantity, replaced_rows = import_inventory(
         counts_by_card_id=counts_by_card_id,
         condition=args.condition,
         notes=args.notes,
+        import_label=import_label,
+        source_path=path,
         dry_run=args.dry_run,
     )
 

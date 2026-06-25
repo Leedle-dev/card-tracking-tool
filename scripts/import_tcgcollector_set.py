@@ -333,6 +333,41 @@ def project_relative_path(path: Path) -> str:
     return path.relative_to(ROOT).as_posix()
 
 
+def inventory_import_id(conn: sqlite3.Connection, set_row: dict[str, object]) -> int:
+    set_code = str(set_row.get("set_code") or "unknown_set")
+    set_name = str(set_row.get("set_name") or "unknown_set")
+    import_label = f"{slugify(set_code)}_{slugify(set_name)}_reference"
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS inventory_imports (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            import_label TEXT NOT NULL UNIQUE,
+            import_type TEXT NOT NULL,
+            source_name TEXT,
+            source_path TEXT,
+            notes TEXT,
+            imported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    conn.execute(
+        """
+        INSERT INTO inventory_imports (import_label, import_type, source_name, source_path, notes)
+        VALUES (?, 'reference', 'TCGcollector', ?, ?)
+        ON CONFLICT(import_label) DO UPDATE SET
+            source_path = excluded.source_path,
+            notes = excluded.notes
+        """,
+        (
+            import_label,
+            str(set_row.get("set_url") or ""),
+            f"Reference inventory rows for {set_name} ({set_code}).",
+        ),
+    )
+    return int(conn.execute("SELECT id FROM inventory_imports WHERE import_label = ?", (import_label,)).fetchone()[0])
+
+
 def import_card(
     conn: sqlite3.Connection,
     set_row: dict[str, object],
@@ -383,15 +418,17 @@ def import_card(
     )
 
     card_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    import_id = inventory_import_id(conn, set_row)
 
     conn.execute(
         """
-        INSERT INTO card_inventory (card_id, sale_status)
-        VALUES (?, 'reference')
+        INSERT INTO card_inventory (card_id, import_id, sale_status)
+        VALUES (?, ?, 'reference')
         ON CONFLICT(card_id) DO UPDATE SET
+            import_id = COALESCE(card_inventory.import_id, excluded.import_id),
             sale_status = excluded.sale_status
         """,
-        (card_id,),
+        (card_id, import_id),
     )
 
     conn.execute(

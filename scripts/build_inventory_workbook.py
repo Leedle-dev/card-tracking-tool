@@ -2,6 +2,7 @@ from pathlib import Path
 import argparse
 import re
 import sqlite3
+import sys
 
 from openpyxl import Workbook
 from openpyxl.comments import Comment
@@ -12,8 +13,12 @@ from openpyxl.worksheet.table import Table, TableStyleInfo
 
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from card_tracker.report_paths import timestamped_report_dir
+
 DB_PATH = ROOT / "data" / "card_tracker.sqlite"
-DEFAULT_OUTPUT_DIR = ROOT / "reports" / "inventory"
 
 
 def slugify(value: str) -> str:
@@ -27,12 +32,17 @@ def parse_args() -> argparse.Namespace:
     )
     # Argument examples:
     #   --set-code CBB5C
-    #   --set-code CBB5C --output reports/inventory/gem_pack_vol_5_inventory.xlsx
+    #   --set-code CBB5C --output reports/inventory_workbook/YYYYMMDD_HHMMSS_cbb5c/gem_pack_vol_5_inventory.xlsx
     #   --set-name "Gem Pack Vol. 5" --language s-chinese
     parser.add_argument("--set-code", default="", help="Set code to export, such as CBB5C.")
     parser.add_argument("--set-name", default="", help="Set name to export if no set code is provided.")
     parser.add_argument("--language", default="", help="Optional language filter, such as s-chinese.")
     parser.add_argument("--output", default="", help="Optional XLSX output path.")
+    parser.add_argument(
+        "--report-label",
+        default="",
+        help="Optional label for the generated timestamped report folder when --output is omitted.",
+    )
     return parser.parse_args()
 
 
@@ -246,7 +256,8 @@ def main() -> None:
             output_path = ROOT / output_path
     else:
         first = rows[0]
-        output_path = DEFAULT_OUTPUT_DIR / (
+        label = args.report_label or f"{first['set_code']}_{first['set_name']}_inventory"
+        output_path = timestamped_report_dir("inventory_workbook", label) / (
             f"{slugify(first['set_code'])}_{slugify(first['set_name'])}_inventory.xlsx"
         )
 

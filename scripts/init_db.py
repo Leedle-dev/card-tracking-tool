@@ -34,6 +34,30 @@ GRADING_COMPANIES = [
         "https://www.cgccards.com",
         "CGC grading company with Gem Mint 10 and Pristine 10 distinctions.",
     ),
+    (
+        "Sportscard Guaranty Corporation",
+        "SGC",
+        "https://www.gosgc.com",
+        "SGC grading company.",
+    ),
+    (
+        "TAG Grading",
+        "TAG",
+        "https://www.taggrading.com",
+        "TAG grading company.",
+    ),
+    (
+        "ACE Grading",
+        "ACE",
+        "https://acegrading.com",
+        "ACE grading company.",
+    ),
+    (
+        "Premier Card Grading",
+        "PCG",
+        "https://premiercardgrading.com",
+        "Premier Card Grading.",
+    ),
 ]
 
 GRADING_PROFILES = [
@@ -119,12 +143,16 @@ def parse_release_year(release_date_text: str | None) -> int | None:
 
 
 def create_card_inventory_table(conn: sqlite3.Connection) -> None:
+    create_inventory_imports_table(conn)
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS card_inventory (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             card_id INTEGER NOT NULL UNIQUE,
+            import_id INTEGER,
             condition TEXT,
+            grading_company_id INTEGER,
+            grade_received REAL CHECK (grade_received IS NULL OR (grade_received >= 1 AND grade_received <= 10)),
             quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity >= 0),
             cost_basis_cents INTEGER NOT NULL DEFAULT 0 CHECK (cost_basis_cents >= 0),
             acquisition_date TEXT,
@@ -132,10 +160,60 @@ def create_card_inventory_table(conn: sqlite3.Connection) -> None:
             notes TEXT,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE
+            FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE,
+            FOREIGN KEY (import_id) REFERENCES inventory_imports(id),
+            FOREIGN KEY (grading_company_id) REFERENCES grading_companies(id)
         )
         """
     )
+    inventory_columns = column_names(conn, "card_inventory")
+    if "import_id" not in inventory_columns:
+        conn.execute("ALTER TABLE card_inventory ADD COLUMN import_id INTEGER")
+    if "grading_company_id" not in inventory_columns:
+        conn.execute("ALTER TABLE card_inventory ADD COLUMN grading_company_id INTEGER")
+    if "grade_received" not in inventory_columns:
+        conn.execute("ALTER TABLE card_inventory ADD COLUMN grade_received REAL")
+
+
+def create_inventory_imports_table(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS inventory_imports (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            import_label TEXT NOT NULL UNIQUE,
+            import_type TEXT NOT NULL,
+            source_name TEXT,
+            source_path TEXT,
+            notes TEXT,
+            imported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+
+
+def inventory_import_id(
+    conn: sqlite3.Connection,
+    import_label: str,
+    import_type: str,
+    source_name: str | None = None,
+    source_path: str | None = None,
+    notes: str | None = None,
+) -> int:
+    create_inventory_imports_table(conn)
+    conn.execute(
+        """
+        INSERT INTO inventory_imports (import_label, import_type, source_name, source_path, notes)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(import_label) DO UPDATE SET
+            import_type = excluded.import_type,
+            source_name = COALESCE(excluded.source_name, inventory_imports.source_name),
+            source_path = COALESCE(excluded.source_path, inventory_imports.source_path),
+            notes = COALESCE(excluded.notes, inventory_imports.notes)
+        """,
+        (import_label, import_type, source_name, source_path, notes),
+    )
+    return int(conn.execute("SELECT id FROM inventory_imports WHERE import_label = ?", (import_label,)).fetchone()[0])
 
 
 def rebuild_cards_for_current_shape(conn: sqlite3.Connection) -> None:
@@ -371,6 +449,26 @@ def pre_schema_migrations(conn: sqlite3.Connection) -> None:
     if grading_profile_columns and "grading_company_id" not in grading_profile_columns:
         conn.execute("ALTER TABLE grading_profiles ADD COLUMN grading_company_id INTEGER")
 
+    inventory_columns = column_names(conn, "card_inventory")
+    inventory_columns_to_add = {
+        "import_id": "INTEGER",
+        "grading_company_id": "INTEGER",
+        "grade_received": "REAL",
+    }
+    for column, column_type in inventory_columns_to_add.items():
+        if inventory_columns and column not in inventory_columns:
+            conn.execute(f"ALTER TABLE card_inventory ADD COLUMN {column} {column_type}")
+
+    marketplace_listing_columns_to_add = {
+        "condition_id": "TEXT",
+        "card_condition": "TEXT",
+    }
+    for table_name in ("marketplace_listings_singles", "marketplace_listings_variations"):
+        listing_columns = column_names(conn, table_name)
+        for column, column_type in marketplace_listing_columns_to_add.items():
+            if listing_columns and column not in listing_columns:
+                conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column} {column_type}")
+
     illustrator_columns = column_names(conn, "illustrators")
     illustrator_columns_to_add = {
         "first_seen_year": "INTEGER",
@@ -385,6 +483,7 @@ def pre_schema_migrations(conn: sqlite3.Connection) -> None:
     backfill_card_set_catalog_links(conn)
     rebuild_cards_for_current_shape(conn)
     rebuild_illustrators_for_current_shape(conn)
+    backfill_inventory_import_ids(conn)
 
 
 def backfill_set_catalog(conn: sqlite3.Connection) -> None:
@@ -463,17 +562,143 @@ def backfill_card_inventory(conn: sqlite3.Connection) -> None:
     if not table_exists(conn, "cards") or not table_exists(conn, "card_inventory"):
         return
 
+    reference_import_id = inventory_import_id(
+        conn,
+        "reference_backfill",
+        "reference",
+        "scripts/init_db.py",
+        notes="Reference inventory rows created for cards without explicit inventory.",
+    )
+
     conn.execute(
         """
-        INSERT INTO card_inventory (card_id, sale_status)
-        SELECT id, 'reference'
+        INSERT INTO card_inventory (card_id, import_id, sale_status)
+        SELECT id, ?, 'reference'
         FROM cards
         WHERE NOT EXISTS (
             SELECT 1
             FROM card_inventory
             WHERE card_inventory.card_id = cards.id
         )
+        """,
+        (reference_import_id,),
+    )
+
+
+def backfill_inventory_import_ids(conn: sqlite3.Connection) -> None:
+    if not table_exists(conn, "card_inventory"):
+        return
+    create_inventory_imports_table(conn)
+    inventory_columns = column_names(conn, "card_inventory")
+    if "import_id" not in inventory_columns:
+        return
+
+    binder_import_id = inventory_import_id(
+        conn,
+        "binder_inventory_import",
+        "binder",
+        "scripts/import_binder_inventory.py",
+        notes="Binder inventory imported from binder intake workbooks.",
+    )
+    workbook_import_id = inventory_import_id(
+        conn,
+        "inventory_workbook_import",
+        "inventory_workbook",
+        "scripts/import_inventory_workbook.py",
+        notes="Editable inventory workbook imports.",
+    )
+    cbb5c_reference_id = inventory_import_id(
+        conn,
+        "cbb5c_gem_pack_vol_5_reference",
+        "reference",
+        "TCGcollector",
+        notes="Gem Pack Vol. 5 CBB5C reference inventory rows.",
+    )
+    cs5ac_reference_id = inventory_import_id(
+        conn,
+        "cs5ac_brave_stars_charm_reference",
+        "reference",
+        "TCGcollector",
+        notes="Brave Stars (Charm) CS5aC reference inventory rows.",
+    )
+    generic_reference_id = inventory_import_id(
+        conn,
+        "reference_backfill",
+        "reference",
+        "scripts/init_db.py",
+        notes="Reference inventory rows created for cards without explicit inventory.",
+    )
+    manual_inventory_id = inventory_import_id(
+        conn,
+        "manual_inventory",
+        "manual",
+        notes="Inventory rows without a more specific import marker.",
+    )
+
+    conn.execute(
         """
+        UPDATE card_inventory
+        SET import_id = ?
+        WHERE import_id IS NULL
+            AND instr(coalesce(notes, ''), 'binder_inventory_import') > 0
+        """,
+        (binder_import_id,),
+    )
+    conn.execute(
+        """
+        UPDATE card_inventory
+        SET import_id = ?
+        WHERE import_id IS NULL
+            AND instr(coalesce(notes, ''), 'inventory_workbook_import') > 0
+        """,
+        (workbook_import_id,),
+    )
+    conn.execute(
+        """
+        UPDATE card_inventory
+        SET import_id = ?
+        WHERE import_id IS NULL
+            AND sale_status = 'reference'
+            AND card_id IN (
+                SELECT c.id
+                FROM cards c
+                JOIN set_catalog sc ON sc.id = c.set_catalog_id
+                WHERE lower(sc.set_code) = lower('CBB5C')
+            )
+        """,
+        (cbb5c_reference_id,),
+    )
+    conn.execute(
+        """
+        UPDATE card_inventory
+        SET import_id = ?
+        WHERE import_id IS NULL
+            AND sale_status = 'reference'
+            AND card_id IN (
+                SELECT c.id
+                FROM cards c
+                JOIN set_catalog sc ON sc.id = c.set_catalog_id
+                WHERE lower(sc.set_code) = lower('CS5AC')
+            )
+        """,
+        (cs5ac_reference_id,),
+    )
+    conn.execute(
+        """
+        UPDATE card_inventory
+        SET import_id = ?
+        WHERE import_id IS NULL
+            AND sale_status = 'reference'
+        """,
+        (generic_reference_id,),
+    )
+    conn.execute(
+        """
+        UPDATE card_inventory
+        SET import_id = ?
+        WHERE import_id IS NULL
+        """,
+        (manual_inventory_id,),
     )
 
 
@@ -550,178 +775,36 @@ def backfill_grading_profile_company_links(conn: sqlite3.Connection) -> None:
     )
 
 
-def backfill_marketplace_listing_split_tables(conn: sqlite3.Connection) -> None:
-    required_tables = {
-        "marketplace_listings",
-        "marketplace_listing_matches",
+def drop_legacy_marketplace_listing_tables(conn: sqlite3.Connection) -> None:
+    if not table_exists(conn, "marketplace_listings"):
+        conn.execute("DROP TABLE IF EXISTS marketplace_listing_matches")
+        return
+
+    required_split_tables = {
         "marketplace_listings_singles",
         "marketplace_listings_variations",
         "marketplace_listing_single_matches",
         "marketplace_listing_variation_matches",
     }
-    if not all(table_exists(conn, table_name) for table_name in required_tables):
-        return
+    if not all(table_exists(conn, table_name) for table_name in required_split_tables):
+        raise RuntimeError("Cannot drop marketplace_listings before split listing tables exist.")
 
-    conn.execute(
+    legacy_count = conn.execute("SELECT COUNT(*) FROM marketplace_listings").fetchone()[0]
+    split_count = conn.execute(
         """
-        INSERT OR IGNORE INTO marketplace_listings_singles (
-            id,
-            fetch_run_id,
-            source_id,
-            external_item_id,
-            legacy_item_id,
-            item_web_url,
-            title,
-            condition,
-            buying_options,
-            price_cents,
-            shipping_cents,
-            total_price_cents,
-            currency,
-            item_location_country,
-            seller_feedback_score,
-            seller_feedback_percentage,
-            item_creation_date,
-            item_end_date,
-            image_url,
-            raw_json_path,
-            checked_at,
-            created_at
-        )
         SELECT
-            id,
-            fetch_run_id,
-            source_id,
-            external_item_id,
-            legacy_item_id,
-            item_web_url,
-            title,
-            condition,
-            buying_options,
-            price_cents,
-            shipping_cents,
-            total_price_cents,
-            currency,
-            item_location_country,
-            seller_feedback_score,
-            seller_feedback_percentage,
-            item_creation_date,
-            item_end_date,
-            image_url,
-            raw_json_path,
-            checked_at,
-            created_at
-        FROM marketplace_listings
-        WHERE COALESCE(is_variation_listing, 0) = 0
+            (SELECT COUNT(*) FROM marketplace_listings_singles)
+            + (SELECT COUNT(*) FROM marketplace_listings_variations)
         """
-    )
-    conn.execute(
-        """
-        INSERT OR IGNORE INTO marketplace_listings_variations (
-            id,
-            fetch_run_id,
-            source_id,
-            external_item_id,
-            legacy_item_id,
-            item_web_url,
-            title,
-            condition,
-            buying_options,
-            price_cents,
-            shipping_cents,
-            total_price_cents,
-            currency,
-            item_group_href,
-            item_group_type,
-            item_location_country,
-            seller_feedback_score,
-            seller_feedback_percentage,
-            item_creation_date,
-            item_end_date,
-            image_url,
-            raw_json_path,
-            checked_at,
-            created_at
+    ).fetchone()[0]
+    if legacy_count and split_count < legacy_count:
+        raise RuntimeError(
+            "Cannot drop marketplace_listings because split tables contain fewer listing rows "
+            f"({split_count}) than the legacy table ({legacy_count})."
         )
-        SELECT
-            id,
-            fetch_run_id,
-            source_id,
-            external_item_id,
-            legacy_item_id,
-            item_web_url,
-            title,
-            condition,
-            buying_options,
-            price_cents,
-            shipping_cents,
-            total_price_cents,
-            currency,
-            item_group_href,
-            item_group_type,
-            item_location_country,
-            seller_feedback_score,
-            seller_feedback_percentage,
-            item_creation_date,
-            item_end_date,
-            image_url,
-            raw_json_path,
-            checked_at,
-            created_at
-        FROM marketplace_listings
-        WHERE COALESCE(is_variation_listing, 0) = 1
-        """
-    )
-    conn.execute(
-        """
-        INSERT OR IGNORE INTO marketplace_listing_single_matches (
-            listing_id,
-            query_id,
-            card_id,
-            match_status,
-            filter_reasons,
-            filter_warnings,
-            created_at
-        )
-        SELECT
-            mlm.listing_id,
-            mlm.query_id,
-            mlm.card_id,
-            mlm.match_status,
-            mlm.filter_reasons,
-            mlm.filter_warnings,
-            mlm.created_at
-        FROM marketplace_listing_matches mlm
-        JOIN marketplace_listings ml ON ml.id = mlm.listing_id
-        WHERE COALESCE(ml.is_variation_listing, 0) = 0
-            AND mlm.match_status IN ('accepted', 'rejected')
-        """
-    )
-    conn.execute(
-        """
-        INSERT OR IGNORE INTO marketplace_listing_variation_matches (
-            listing_id,
-            query_id,
-            card_id,
-            match_status,
-            filter_reasons,
-            filter_warnings,
-            created_at
-        )
-        SELECT
-            mlm.listing_id,
-            mlm.query_id,
-            mlm.card_id,
-            'variation',
-            mlm.filter_reasons,
-            mlm.filter_warnings,
-            mlm.created_at
-        FROM marketplace_listing_matches mlm
-        JOIN marketplace_listings ml ON ml.id = mlm.listing_id
-        WHERE COALESCE(ml.is_variation_listing, 0) = 1
-            AND mlm.match_status = 'variation'
-        """
-    )
+
+    conn.execute("DROP TABLE IF EXISTS marketplace_listing_matches")
+    conn.execute("DROP TABLE IF EXISTS marketplace_listings")
 
 
 def main() -> None:
@@ -735,8 +818,9 @@ def main() -> None:
         backfill_set_catalog(conn)
         backfill_card_set_catalog_links(conn)
         backfill_card_inventory(conn)
+        backfill_inventory_import_ids(conn)
         backfill_illustrator_years(conn)
-        backfill_marketplace_listing_split_tables(conn)
+        drop_legacy_marketplace_listing_tables(conn)
         conn.executemany(
             """
             INSERT INTO marketplace_sources (name, website_url, notes)
@@ -803,7 +887,7 @@ def main() -> None:
             ],
         )
         backfill_grading_profile_company_links(conn)
-        backfill_marketplace_listing_split_tables(conn)
+        drop_legacy_marketplace_listing_tables(conn)
 
     print(f"Database initialized at {DB_PATH}")
 

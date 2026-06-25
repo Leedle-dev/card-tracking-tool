@@ -11,7 +11,9 @@ data/card_images/**
 
 # Raw fetched website/debug output
 data/raw_fetches/
-modeling/ebay_browse/output/
+
+# Generated report output
+reports/
 
 # Local Node dependency link used for report builders
 node_modules/

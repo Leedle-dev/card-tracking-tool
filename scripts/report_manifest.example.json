@@ -1,0 +1,63 @@
+{
+  "report_type": "example_report",
+  "label": "sample_cards",
+  "metadata": {
+    "notes": "Example manifest for scripts/build_report.py"
+  },
+  "files": [
+    {
+      "kind": "tsv",
+      "filename": "sample_cards.tsv",
+      "fieldnames": ["card", "price_cents"],
+      "rows": [
+        {
+          "card": "Pikachu",
+          "price_cents": 125
+        },
+        {
+          "card": "Houndoom",
+          "price_cents": 250
+        }
+      ]
+    },
+    {
+      "kind": "text",
+      "filename": "summary.txt",
+      "text": "Example report built from a manifest."
+    },
+    {
+      "kind": "json",
+      "filename": "source_payload.json",
+      "raw": true,
+      "data": {
+        "source": "example"
+      }
+    },
+    {
+      "kind": "xlsx",
+      "filename": "sample_cards.xlsx",
+      "sheets": [
+        {
+          "name": "Cards",
+          "fieldnames": ["card", "price_cents"],
+          "rows": [
+            {
+              "card": "Pikachu",
+              "price_cents": 125
+            },
+            {
+              "card": "Houndoom",
+              "price_cents": 250
+            }
+          ],
+          "table_name": "SampleCards",
+          "integer_columns": ["price_cents"],
+          "column_widths": {
+            "card": 18,
+            "price_cents": 14
+          }
+        }
+      ]
+    }
+  ]
+}
